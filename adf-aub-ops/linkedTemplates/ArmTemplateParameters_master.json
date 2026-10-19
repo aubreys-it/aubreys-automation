@@ -1,0 +1,54 @@
+{
+	"$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"factoryName": {
+			"value": "adf-aub-ops"
+		},
+		"ls_fn_ig_etl_functionKey": {
+			"value": ""
+		},
+		"ls_adls_aubdatain_properties_typeProperties_url": {
+			"value": "https://aubdatain.dfs.core.windows.net/"
+		},
+		"ls_fn_ig_etl_properties_typeProperties_functionAppUrl": {
+			"value": "https://aub-ig-etl-btfsheaedcfuhyby.eastus-01.azurewebsites.net"
+		},
+		"ls_kv_automation_properties_typeProperties_baseUrl": {
+			"value": "https://kv-aub-automation.vault.azure.net/"
+		},
+		"ls_sftp_ig_properties_typeProperties_host": {
+			"value": "portal.ftp.infogenesisasp.com"
+		},
+		"ls_sftp_ig_properties_typeProperties_hostKeyFingerprint": {
+			"value": "ssh-rsa 2048 0c:98:90:73:46:3d:d6:90:8d:a3:90:d8:a8:50:f4:e0"
+		},
+		"ls_sftp_ig_properties_typeProperties_userName": {
+			"value": "AUBR1.ftpadmin"
+		},
+		"ls_sql_domesday_mi_properties_typeProperties_server": {
+			"value": "mcp-alex.database.windows.net"
+		},
+		"ls_sql_domesday_mi_properties_typeProperties_database": {
+			"value": "domesday"
+		},
+		"tr_menus_daily_0730_properties_pl_menus_daily_parameters_onlyMissing": {
+			"value": false
+		},
+		"tr_menus_daily_0730_properties_pl_menus_daily_parameters_missingSeverity": {
+			"value": "WARN"
+		},
+		"tr_menus_retry_0815_properties_pl_menus_daily_parameters_onlyMissing": {
+			"value": true
+		},
+		"tr_menus_retry_0815_properties_pl_menus_daily_parameters_missingSeverity": {
+			"value": "ERROR"
+		},
+		"containerUri": {
+			"value": ""
+		},
+		"containerSasToken": {
+			"value": ""
+		}
+	}
+}

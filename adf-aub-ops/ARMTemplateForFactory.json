@@ -1,0 +1,3425 @@
+{
+	"$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"factoryName": {
+			"type": "string",
+			"metadata": "Data Factory name",
+			"defaultValue": "adf-aub-ops"
+		},
+		"ls_fn_ig_etl_functionKey": {
+			"type": "secureString",
+			"metadata": "Secure string for 'functionKey' of 'ls_fn_ig_etl'"
+		},
+		"ls_adls_aubdatain_properties_typeProperties_url": {
+			"type": "string",
+			"defaultValue": "https://aubdatain.dfs.core.windows.net/"
+		},
+		"ls_fn_ig_etl_properties_typeProperties_functionAppUrl": {
+			"type": "string",
+			"defaultValue": "https://aub-ig-etl-btfsheaedcfuhyby.eastus-01.azurewebsites.net"
+		},
+		"ls_kv_automation_properties_typeProperties_baseUrl": {
+			"type": "string",
+			"defaultValue": "https://kv-aub-automation.vault.azure.net/"
+		},
+		"ls_sftp_ig_properties_typeProperties_host": {
+			"type": "string",
+			"defaultValue": "portal.ftp.infogenesisasp.com"
+		},
+		"ls_sftp_ig_properties_typeProperties_hostKeyFingerprint": {
+			"type": "string",
+			"defaultValue": "ssh-rsa 2048 0c:98:90:73:46:3d:d6:90:8d:a3:90:d8:a8:50:f4:e0"
+		},
+		"ls_sftp_ig_properties_typeProperties_userName": {
+			"type": "string",
+			"defaultValue": "AUBR1.ftpadmin"
+		},
+		"ls_sql_domesday_mi_properties_typeProperties_server": {
+			"type": "string",
+			"defaultValue": "mcp-alex.database.windows.net"
+		},
+		"ls_sql_domesday_mi_properties_typeProperties_database": {
+			"type": "string",
+			"defaultValue": "domesday"
+		},
+		"tr_menus_daily_0730_properties_pl_menus_daily_parameters_onlyMissing": {
+			"type": "bool",
+			"defaultValue": false
+		},
+		"tr_menus_daily_0730_properties_pl_menus_daily_parameters_missingSeverity": {
+			"type": "string",
+			"defaultValue": "WARN"
+		},
+		"tr_menus_retry_0815_properties_pl_menus_daily_parameters_onlyMissing": {
+			"type": "bool",
+			"defaultValue": true
+		},
+		"tr_menus_retry_0815_properties_pl_menus_daily_parameters_missingSeverity": {
+			"type": "string",
+			"defaultValue": "ERROR"
+		}
+	},
+	"variables": {
+		"factoryId": "[concat('Microsoft.DataFactory/factories/', parameters('factoryName'))]"
+	},
+	"resources": [
+		{
+			"name": "[concat(parameters('factoryName'), '/pl_menus_core')]",
+			"type": "Microsoft.DataFactory/factories/pipelines",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"activities": [
+					{
+						"name": "Get stores",
+						"type": "Lookup",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.00:10:00",
+							"retry": 1,
+							"retryIntervalInSeconds": 30
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"source": {
+								"type": "AzureSqlSource",
+								"sqlReaderStoredProcedureName": "menu.usp_stores_to_load",
+								"storedProcedureParameters": {
+									"onlyMissing": {
+										"type": "Boolean",
+										"value": {
+											"value": "@pipeline().parameters.onlyMissing",
+											"type": "Expression"
+										}
+									}
+								},
+								"queryTimeout": "00:10:00",
+								"partitionOption": "None"
+							},
+							"dataset": {
+								"referenceName": "ds_sql_domesday",
+								"type": "DatasetReference",
+								"parameters": {}
+							},
+							"firstRowOnly": false
+						}
+					},
+					{
+						"name": "Ingest each store",
+						"type": "ForEach",
+						"dependsOn": [
+							{
+								"activity": "Get stores",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"items": {
+								"value": "@activity('Get stores').output.value",
+								"type": "Expression"
+							},
+							"isSequential": false,
+							"batchCount": 6,
+							"activities": [
+								{
+									"name": "Ingest store",
+									"type": "ExecutePipeline",
+									"dependsOn": [],
+									"policy": {
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"pipeline": {
+											"referenceName": "pl_menus_ingest_store",
+											"type": "PipelineReference"
+										},
+										"waitOnCompletion": true,
+										"parameters": {
+											"runId": {
+												"value": "@pipeline().parameters.runId",
+												"type": "Expression"
+											},
+											"locId": {
+												"value": "@item().locId",
+												"type": "Expression"
+											},
+											"nn": {
+												"value": "@item().nn",
+												"type": "Expression"
+											},
+											"maxFileAgeHours": {
+												"value": "@pipeline().parameters.maxFileAgeHours",
+												"type": "Expression"
+											},
+											"rejectThresholdPct": {
+												"value": "@pipeline().parameters.rejectThresholdPct",
+												"type": "Expression"
+											},
+											"missingSeverity": {
+												"value": "@pipeline().parameters.missingSeverity",
+												"type": "Expression"
+											}
+										}
+									}
+								}
+							]
+						}
+					},
+					{
+						"name": "Stage each table",
+						"type": "ForEach",
+						"dependsOn": [
+							{
+								"activity": "Ingest each store",
+								"dependencyConditions": [
+									"Completed"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"items": {
+								"value": "@json('[{\"entity\": \"item\", \"table\": \"mi_item\"}, {\"entity\": \"price_level\", \"table\": \"mi_price_level\"}, {\"entity\": \"store_price_level\", \"table\": \"mi_store_price_level\"}, {\"entity\": \"sku_code\", \"table\": \"mi_sku_code\"}, {\"entity\": \"choice_group\", \"table\": \"mi_choice_group\"}, {\"entity\": \"kitchen_printer\", \"table\": \"mi_kitchen_printer\"}]')",
+								"type": "Expression"
+							},
+							"isSequential": false,
+							"batchCount": 6,
+							"activities": [
+								{
+									"name": "Check parsed files",
+									"type": "GetMetadata",
+									"dependsOn": [],
+									"policy": {
+										"retry": 0,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"dataset": {
+											"referenceName": "ds_datain_csv",
+											"type": "DatasetReference",
+											"parameters": {
+												"folderPath": {
+													"value": "@concat('menu_items/parsed/', pipeline().parameters.runId, '/', item().entity)",
+													"type": "Expression"
+												}
+											}
+										},
+										"fieldList": [
+											"exists"
+										],
+										"storeSettings": {
+											"type": "AzureBlobFSReadSettings",
+											"recursive": false
+										},
+										"formatSettings": {
+											"type": "DelimitedTextReadSettings"
+										}
+									}
+								},
+								{
+									"name": "If any parsed",
+									"type": "IfCondition",
+									"dependsOn": [
+										{
+											"activity": "Check parsed files",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"userProperties": [],
+									"typeProperties": {
+										"expression": {
+											"value": "@activity('Check parsed files').output.exists",
+											"type": "Expression"
+										},
+										"ifTrueActivities": [
+											{
+												"name": "Copy to staging",
+												"type": "Copy",
+												"dependsOn": [],
+												"policy": {
+													"timeout": "0.00:15:00",
+													"retry": 1,
+													"retryIntervalInSeconds": 30
+												},
+												"userProperties": [],
+												"typeProperties": {
+													"source": {
+														"type": "DelimitedTextSource",
+														"storeSettings": {
+															"type": "AzureBlobFSReadSettings",
+															"recursive": false,
+															"wildcardFolderPath": {
+																"value": "@concat('menu_items/parsed/', pipeline().parameters.runId, '/', item().entity)",
+																"type": "Expression"
+															},
+															"wildcardFileName": "*.csv"
+														},
+														"formatSettings": {
+															"type": "DelimitedTextReadSettings"
+														}
+													},
+													"sink": {
+														"type": "AzureSqlSink",
+														"preCopyScript": {
+															"value": "@concat('DELETE FROM stg.', item().table, ';')",
+															"type": "Expression"
+														},
+														"writeBehavior": "insert",
+														"sqlWriterUseTableLock": false,
+														"disableMetricsCollection": false
+													},
+													"enableStaging": false,
+													"translator": {
+														"type": "TabularTranslator",
+														"typeConversion": true,
+														"typeConversionSettings": {
+															"allowDataTruncation": false,
+															"treatBooleanAsNumber": false
+														}
+													}
+												},
+												"inputs": [
+													{
+														"referenceName": "ds_datain_csv",
+														"type": "DatasetReference",
+														"parameters": {
+															"folderPath": {
+																"value": "@concat('menu_items/parsed/', pipeline().parameters.runId, '/', item().entity)",
+																"type": "Expression"
+															}
+														}
+													}
+												],
+												"outputs": [
+													{
+														"referenceName": "ds_sql_stg_table",
+														"type": "DatasetReference",
+														"parameters": {
+															"tableName": {
+																"value": "@item().table",
+																"type": "Expression"
+															}
+														}
+													}
+												]
+											}
+										]
+									}
+								}
+							]
+						}
+					},
+					{
+						"name": "Merge into ig",
+						"type": "Lookup",
+						"dependsOn": [
+							{
+								"activity": "Stage each table",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"policy": {
+							"timeout": "0.00:10:00",
+							"retry": 1,
+							"retryIntervalInSeconds": 30
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"source": {
+								"type": "AzureSqlSource",
+								"sqlReaderStoredProcedureName": "ig.usp_mi_merge",
+								"storedProcedureParameters": {
+									"runId": {
+										"type": "String",
+										"value": {
+											"value": "@pipeline().parameters.runId",
+											"type": "Expression"
+										}
+									}
+								},
+								"queryTimeout": "00:10:00",
+								"partitionOption": "None"
+							},
+							"dataset": {
+								"referenceName": "ds_sql_domesday",
+								"type": "DatasetReference",
+								"parameters": {}
+							},
+							"firstRowOnly": false
+						}
+					},
+					{
+						"name": "Check IG data quality",
+						"type": "SqlServerStoredProcedure",
+						"dependsOn": [
+							{
+								"activity": "Merge into ig",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"policy": {
+							"timeout": "0.00:10:00",
+							"retry": 1,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"storedProcedureName": "menu.usp_check_ig_quality",
+							"storedProcedureParameters": {
+								"runId": {
+									"value": {
+										"value": "@pipeline().parameters.runId",
+										"type": "Expression"
+									},
+									"type": "String"
+								}
+							}
+						},
+						"linkedServiceName": {
+							"referenceName": "ls_sql_domesday_mi",
+							"type": "LinkedServiceReference"
+						}
+					},
+					{
+						"name": "Publish each store",
+						"type": "ForEach",
+						"dependsOn": [
+							{
+								"activity": "Check IG data quality",
+								"dependencyConditions": [
+									"Completed"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"items": {
+								"value": "@activity('Get stores').output.value",
+								"type": "Expression"
+							},
+							"isSequential": false,
+							"batchCount": 6,
+							"activities": [
+								{
+									"name": "Publish store",
+									"type": "ExecutePipeline",
+									"dependsOn": [],
+									"policy": {
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"pipeline": {
+											"referenceName": "pl_menus_publish_store",
+											"type": "PipelineReference"
+										},
+										"waitOnCompletion": true,
+										"parameters": {
+											"runId": {
+												"value": "@pipeline().parameters.runId",
+												"type": "Expression"
+											},
+											"locId": {
+												"value": "@item().locId",
+												"type": "Expression"
+											},
+											"nn": {
+												"value": "@item().nn",
+												"type": "Expression"
+											}
+										}
+									}
+								}
+							]
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"parameters": {
+					"runId": {
+						"type": "string"
+					},
+					"onlyMissing": {
+						"type": "bool",
+						"defaultValue": false
+					},
+					"maxFileAgeHours": {
+						"type": "int",
+						"defaultValue": 20
+					},
+					"rejectThresholdPct": {
+						"type": "float",
+						"defaultValue": 1
+					},
+					"missingSeverity": {
+						"type": "string",
+						"defaultValue": "ERROR"
+					}
+				},
+				"folder": {
+					"name": "menus"
+				},
+				"annotations": []
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/datasets/ds_sql_domesday')]",
+				"[concat(variables('factoryId'), '/linkedServices/ls_sql_domesday_mi')]",
+				"[concat(variables('factoryId'), '/pipelines/pl_menus_ingest_store')]",
+				"[concat(variables('factoryId'), '/datasets/ds_datain_csv')]",
+				"[concat(variables('factoryId'), '/pipelines/pl_menus_publish_store')]",
+				"[concat(variables('factoryId'), '/datasets/ds_sql_stg_table')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/pl_menus_daily')]",
+			"type": "Microsoft.DataFactory/factories/pipelines",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"activities": [
+					{
+						"name": "Start run log",
+						"type": "SqlServerStoredProcedure",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.00:10:00",
+							"retry": 1,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"storedProcedureName": "ops.usp_run_start",
+							"storedProcedureParameters": {
+								"runId": {
+									"value": {
+										"value": "@pipeline().RunId",
+										"type": "Expression"
+									},
+									"type": "String"
+								},
+								"domainCode": {
+									"value": "menus",
+									"type": "String"
+								},
+								"pipelineName": {
+									"value": {
+										"value": "@pipeline().Pipeline",
+										"type": "Expression"
+									},
+									"type": "String"
+								},
+								"triggerName": {
+									"value": {
+										"value": "@pipeline().TriggerName",
+										"type": "Expression"
+									},
+									"type": "String"
+								},
+								"triggerType": {
+									"value": {
+										"value": "@pipeline().TriggerType",
+										"type": "Expression"
+									},
+									"type": "String"
+								}
+							}
+						},
+						"linkedServiceName": {
+							"referenceName": "ls_sql_domesday_mi",
+							"type": "LinkedServiceReference"
+						}
+					},
+					{
+						"name": "Run menus",
+						"type": "ExecutePipeline",
+						"dependsOn": [
+							{
+								"activity": "Start run log",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"policy": {
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"pipeline": {
+								"referenceName": "pl_menus_core",
+								"type": "PipelineReference"
+							},
+							"waitOnCompletion": true,
+							"parameters": {
+								"runId": {
+									"value": "@pipeline().RunId",
+									"type": "Expression"
+								},
+								"onlyMissing": {
+									"value": "@pipeline().parameters.onlyMissing",
+									"type": "Expression"
+								},
+								"maxFileAgeHours": {
+									"value": "@pipeline().parameters.maxFileAgeHours",
+									"type": "Expression"
+								},
+								"rejectThresholdPct": {
+									"value": "@pipeline().parameters.rejectThresholdPct",
+									"type": "Expression"
+								},
+								"missingSeverity": {
+									"value": "@pipeline().parameters.missingSeverity",
+									"type": "Expression"
+								}
+							}
+						}
+					},
+					{
+						"name": "End run log",
+						"type": "SqlServerStoredProcedure",
+						"dependsOn": [
+							{
+								"activity": "Run menus",
+								"dependencyConditions": [
+									"Completed"
+								]
+							}
+						],
+						"policy": {
+							"timeout": "0.00:10:00",
+							"retry": 1,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"storedProcedureName": "ops.usp_run_end",
+							"storedProcedureParameters": {
+								"runId": {
+									"value": {
+										"value": "@pipeline().RunId",
+										"type": "Expression"
+									},
+									"type": "String"
+								},
+								"failureMessage": {
+									"value": {
+										"value": "@coalesce(activity('Run menus')?.error?.message, '')",
+										"type": "Expression"
+									},
+									"type": "String"
+								}
+							}
+						},
+						"linkedServiceName": {
+							"referenceName": "ls_sql_domesday_mi",
+							"type": "LinkedServiceReference"
+						}
+					},
+					{
+						"name": "Send notifications",
+						"type": "ExecutePipeline",
+						"dependsOn": [
+							{
+								"activity": "End run log",
+								"dependencyConditions": [
+									"Completed"
+								]
+							}
+						],
+						"policy": {
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"pipeline": {
+								"referenceName": "pl_ops_notify",
+								"type": "PipelineReference"
+							},
+							"waitOnCompletion": true,
+							"parameters": {
+								"runId": {
+									"value": "@pipeline().RunId",
+									"type": "Expression"
+								}
+							}
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"parameters": {
+					"onlyMissing": {
+						"type": "bool",
+						"defaultValue": false
+					},
+					"maxFileAgeHours": {
+						"type": "int",
+						"defaultValue": 20
+					},
+					"rejectThresholdPct": {
+						"type": "float",
+						"defaultValue": 1
+					},
+					"missingSeverity": {
+						"type": "string",
+						"defaultValue": "ERROR"
+					}
+				},
+				"folder": {
+					"name": "menus"
+				},
+				"annotations": []
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/ls_sql_domesday_mi')]",
+				"[concat(variables('factoryId'), '/pipelines/pl_menus_core')]",
+				"[concat(variables('factoryId'), '/pipelines/pl_ops_notify')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/pl_menus_ingest_store')]",
+			"type": "Microsoft.DataFactory/factories/pipelines",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"activities": [
+					{
+						"name": "Set raw folder",
+						"type": "SetVariable",
+						"dependsOn": [],
+						"policy": {
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"variableName": "rawFolder",
+							"value": {
+								"value": "@concat('menu_items/raw/', formatDateTime(utcNow(), 'yyyy/MM/dd'))",
+								"type": "Expression"
+							}
+						}
+					},
+					{
+						"name": "Check IG file",
+						"type": "GetMetadata",
+						"dependsOn": [
+							{
+								"activity": "Set raw folder",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"policy": {
+							"timeout": "0.00:02:00",
+							"retry": 2,
+							"retryIntervalInSeconds": 60
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"dataset": {
+								"referenceName": "ds_ig_sftp_mi_exp",
+								"type": "DatasetReference",
+								"parameters": {
+									"nn": {
+										"value": "@pipeline().parameters.nn",
+										"type": "Expression"
+									}
+								}
+							},
+							"fieldList": [
+								"exists",
+								"lastModified",
+								"size"
+							],
+							"storeSettings": {
+								"type": "SftpReadSettings",
+								"recursive": false
+							},
+							"formatSettings": {
+								"type": "BinaryReadSettings"
+							}
+						}
+					},
+					{
+						"name": "File state",
+						"type": "Switch",
+						"dependsOn": [
+							{
+								"activity": "Check IG file",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"on": {
+								"value": "@if(not(activity('Check IG file').output.exists), 'missing', if(less(ticks(coalesce(activity('Check IG file').output?.lastModified, utcNow())), ticks(addHours(utcNow(), mul(-1, pipeline().parameters.maxFileAgeHours)))), 'stale', 'ok'))",
+								"type": "Expression"
+							},
+							"cases": [
+								{
+									"value": "missing",
+									"activities": [
+										{
+											"name": "Log missing file",
+											"type": "SqlServerStoredProcedure",
+											"dependsOn": [],
+											"policy": {
+												"timeout": "0.00:10:00",
+												"retry": 1,
+												"retryIntervalInSeconds": 30,
+												"secureOutput": false,
+												"secureInput": false
+											},
+											"userProperties": [],
+											"typeProperties": {
+												"storedProcedureName": "ops.usp_log_event",
+												"storedProcedureParameters": {
+													"runId": {
+														"value": {
+															"value": "@pipeline().parameters.runId",
+															"type": "Expression"
+														},
+														"type": "String"
+													},
+													"domainCode": {
+														"value": "menus",
+														"type": "String"
+													},
+													"code": {
+														"value": "FILE_MISSING",
+														"type": "String"
+													},
+													"message": {
+														"value": {
+															"value": "@concat('Store ', pipeline().parameters.nn, ': no MI_Exp.txt in /Export/', pipeline().parameters.nn, ' on the IG SFTP')",
+															"type": "Expression"
+														},
+														"type": "String"
+													},
+													"locId": {
+														"value": {
+															"value": "@pipeline().parameters.locId",
+															"type": "Expression"
+														},
+														"type": "Int32"
+													},
+													"severity": {
+														"value": {
+															"value": "@pipeline().parameters.missingSeverity",
+															"type": "Expression"
+														},
+														"type": "String"
+													},
+													"step": {
+														"value": "ingest",
+														"type": "String"
+													}
+												}
+											},
+											"linkedServiceName": {
+												"referenceName": "ls_sql_domesday_mi",
+												"type": "LinkedServiceReference"
+											}
+										}
+									]
+								},
+								{
+									"value": "stale",
+									"activities": [
+										{
+											"name": "Log stale file",
+											"type": "SqlServerStoredProcedure",
+											"dependsOn": [],
+											"policy": {
+												"timeout": "0.00:10:00",
+												"retry": 1,
+												"retryIntervalInSeconds": 30,
+												"secureOutput": false,
+												"secureInput": false
+											},
+											"userProperties": [],
+											"typeProperties": {
+												"storedProcedureName": "ops.usp_log_event",
+												"storedProcedureParameters": {
+													"runId": {
+														"value": {
+															"value": "@pipeline().parameters.runId",
+															"type": "Expression"
+														},
+														"type": "String"
+													},
+													"domainCode": {
+														"value": "menus",
+														"type": "String"
+													},
+													"code": {
+														"value": "FILE_STALE",
+														"type": "String"
+													},
+													"message": {
+														"value": {
+															"value": "@concat('Store ', pipeline().parameters.nn, ': MI_Exp.txt was last updated ', activity('Check IG file').output.lastModified, ' UTC')",
+															"type": "Expression"
+														},
+														"type": "String"
+													},
+													"locId": {
+														"value": {
+															"value": "@pipeline().parameters.locId",
+															"type": "Expression"
+														},
+														"type": "Int32"
+													},
+													"severity": {
+														"value": {
+															"value": "@pipeline().parameters.missingSeverity",
+															"type": "Expression"
+														},
+														"type": "String"
+													},
+													"step": {
+														"value": "ingest",
+														"type": "String"
+													}
+												}
+											},
+											"linkedServiceName": {
+												"referenceName": "ls_sql_domesday_mi",
+												"type": "LinkedServiceReference"
+											}
+										}
+									]
+								},
+								{
+									"value": "ok",
+									"activities": [
+										{
+											"name": "Copy raw file",
+											"type": "Copy",
+											"dependsOn": [],
+											"policy": {
+												"timeout": "0.00:10:00",
+												"retry": 2,
+												"retryIntervalInSeconds": 60
+											},
+											"userProperties": [],
+											"typeProperties": {
+												"source": {
+													"type": "BinarySource",
+													"storeSettings": {
+														"type": "SftpReadSettings",
+														"recursive": false,
+														"disableChunking": false
+													}
+												},
+												"sink": {
+													"type": "BinarySink",
+													"storeSettings": {
+														"type": "AzureBlobFSWriteSettings"
+													}
+												},
+												"enableStaging": false
+											},
+											"inputs": [
+												{
+													"referenceName": "ds_ig_sftp_mi_exp",
+													"type": "DatasetReference",
+													"parameters": {
+														"nn": {
+															"value": "@pipeline().parameters.nn",
+															"type": "Expression"
+														}
+													}
+												}
+											],
+											"outputs": [
+												{
+													"referenceName": "ds_datain_binary",
+													"type": "DatasetReference",
+													"parameters": {
+														"folderPath": {
+															"value": "@variables('rawFolder')",
+															"type": "Expression"
+														},
+														"fileName": {
+															"value": "@concat(pipeline().parameters.nn, '_MI_Exp.txt')",
+															"type": "Expression"
+														}
+													}
+												}
+											]
+										},
+										{
+											"name": "Record arrival",
+											"type": "SqlServerStoredProcedure",
+											"dependsOn": [
+												{
+													"activity": "Copy raw file",
+													"dependencyConditions": [
+														"Succeeded"
+													]
+												}
+											],
+											"policy": {
+												"timeout": "0.00:10:00",
+												"retry": 1,
+												"retryIntervalInSeconds": 30,
+												"secureOutput": false,
+												"secureInput": false
+											},
+											"userProperties": [],
+											"typeProperties": {
+												"storedProcedureName": "ops.usp_record_arrival",
+												"storedProcedureParameters": {
+													"runId": {
+														"value": {
+															"value": "@pipeline().parameters.runId",
+															"type": "Expression"
+														},
+														"type": "String"
+													},
+													"domainCode": {
+														"value": "menus",
+														"type": "String"
+													},
+													"feedCode": {
+														"value": "MI_Exp",
+														"type": "String"
+													},
+													"locId": {
+														"value": {
+															"value": "@pipeline().parameters.locId",
+															"type": "Expression"
+														},
+														"type": "Int32"
+													},
+													"sourceModifiedUtc": {
+														"value": {
+															"value": "@activity('Check IG file').output.lastModified",
+															"type": "Expression"
+														},
+														"type": "DateTime"
+													},
+													"sourcePath": {
+														"value": {
+															"value": "@concat('infogenesis/', variables('rawFolder'), '/', pipeline().parameters.nn, '_MI_Exp.txt')",
+															"type": "Expression"
+														},
+														"type": "String"
+													}
+												}
+											},
+											"linkedServiceName": {
+												"referenceName": "ls_sql_domesday_mi",
+												"type": "LinkedServiceReference"
+											}
+										},
+										{
+											"name": "Parse file",
+											"type": "AzureFunctionActivity",
+											"dependsOn": [
+												{
+													"activity": "Record arrival",
+													"dependencyConditions": [
+														"Succeeded"
+													]
+												}
+											],
+											"policy": {
+												"timeout": "0.00:05:00",
+												"retry": 1,
+												"retryIntervalInSeconds": 30
+											},
+											"userProperties": [],
+											"typeProperties": {
+												"functionName": "mi-export/parse",
+												"body": {
+													"value": "@json(concat('{\"runId\":\"', pipeline().parameters.runId, '\",\"storageAccount\":\"aubdatain\",\"container\":\"infogenesis\",\"rawBlob\":\"', variables('rawFolder'), '/', pipeline().parameters.nn, '_MI_Exp.txt', '\",\"outputPrefix\":\"menu_items/parsed/', pipeline().parameters.runId, '\",\"locId\":', string(pipeline().parameters.locId), ',\"rejectThresholdPct\":', string(pipeline().parameters.rejectThresholdPct), '}'))",
+													"type": "Expression"
+												},
+												"headers": {},
+												"method": "POST"
+											},
+											"linkedServiceName": {
+												"referenceName": "ls_fn_ig_etl",
+												"type": "LinkedServiceReference"
+											}
+										},
+										{
+											"name": "Log parse result",
+											"type": "SqlServerStoredProcedure",
+											"dependsOn": [
+												{
+													"activity": "Parse file",
+													"dependencyConditions": [
+														"Succeeded"
+													]
+												}
+											],
+											"policy": {
+												"timeout": "0.00:10:00",
+												"retry": 1,
+												"retryIntervalInSeconds": 30,
+												"secureOutput": false,
+												"secureInput": false
+											},
+											"userProperties": [],
+											"typeProperties": {
+												"storedProcedureName": "ig.usp_log_parse_result",
+												"storedProcedureParameters": {
+													"runId": {
+														"value": {
+															"value": "@pipeline().parameters.runId",
+															"type": "Expression"
+														},
+														"type": "String"
+													},
+													"locId": {
+														"value": {
+															"value": "@pipeline().parameters.locId",
+															"type": "Expression"
+														},
+														"type": "Int32"
+													},
+													"result": {
+														"value": {
+															"value": "@string(activity('Parse file').output)",
+															"type": "Expression"
+														},
+														"type": "String"
+													}
+												}
+											},
+											"linkedServiceName": {
+												"referenceName": "ls_sql_domesday_mi",
+												"type": "LinkedServiceReference"
+											}
+										},
+										{
+											"name": "Log copy failure",
+											"type": "SqlServerStoredProcedure",
+											"dependsOn": [
+												{
+													"activity": "Copy raw file",
+													"dependencyConditions": [
+														"Failed"
+													]
+												}
+											],
+											"policy": {
+												"timeout": "0.00:10:00",
+												"retry": 1,
+												"retryIntervalInSeconds": 30,
+												"secureOutput": false,
+												"secureInput": false
+											},
+											"userProperties": [],
+											"typeProperties": {
+												"storedProcedureName": "ops.usp_log_event",
+												"storedProcedureParameters": {
+													"runId": {
+														"value": {
+															"value": "@pipeline().parameters.runId",
+															"type": "Expression"
+														},
+														"type": "String"
+													},
+													"domainCode": {
+														"value": "menus",
+														"type": "String"
+													},
+													"code": {
+														"value": "LOAD_FAILED",
+														"type": "String"
+													},
+													"message": {
+														"value": {
+															"value": "@concat('Store ', pipeline().parameters.nn, ': could not copy MI_Exp.txt from IG SFTP: ', activity('Copy raw file').error.message)",
+															"type": "Expression"
+														},
+														"type": "String"
+													},
+													"locId": {
+														"value": {
+															"value": "@pipeline().parameters.locId",
+															"type": "Expression"
+														},
+														"type": "Int32"
+													},
+													"step": {
+														"value": "ingest",
+														"type": "String"
+													}
+												}
+											},
+											"linkedServiceName": {
+												"referenceName": "ls_sql_domesday_mi",
+												"type": "LinkedServiceReference"
+											}
+										},
+										{
+											"name": "Log parser failure",
+											"type": "SqlServerStoredProcedure",
+											"dependsOn": [
+												{
+													"activity": "Parse file",
+													"dependencyConditions": [
+														"Failed"
+													]
+												}
+											],
+											"policy": {
+												"timeout": "0.00:10:00",
+												"retry": 1,
+												"retryIntervalInSeconds": 30,
+												"secureOutput": false,
+												"secureInput": false
+											},
+											"userProperties": [],
+											"typeProperties": {
+												"storedProcedureName": "ops.usp_log_event",
+												"storedProcedureParameters": {
+													"runId": {
+														"value": {
+															"value": "@pipeline().parameters.runId",
+															"type": "Expression"
+														},
+														"type": "String"
+													},
+													"domainCode": {
+														"value": "menus",
+														"type": "String"
+													},
+													"code": {
+														"value": "PARSE_FAILED",
+														"type": "String"
+													},
+													"message": {
+														"value": {
+															"value": "@concat('Store ', pipeline().parameters.nn, ': parser function call failed: ', activity('Parse file').error.message)",
+															"type": "Expression"
+														},
+														"type": "String"
+													},
+													"locId": {
+														"value": {
+															"value": "@pipeline().parameters.locId",
+															"type": "Expression"
+														},
+														"type": "Int32"
+													},
+													"step": {
+														"value": "parse",
+														"type": "String"
+													}
+												}
+											},
+											"linkedServiceName": {
+												"referenceName": "ls_sql_domesday_mi",
+												"type": "LinkedServiceReference"
+											}
+										}
+									]
+								}
+							]
+						}
+					},
+					{
+						"name": "Log SFTP failure",
+						"type": "SqlServerStoredProcedure",
+						"dependsOn": [
+							{
+								"activity": "Check IG file",
+								"dependencyConditions": [
+									"Failed"
+								]
+							}
+						],
+						"policy": {
+							"timeout": "0.00:10:00",
+							"retry": 1,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"storedProcedureName": "ops.usp_log_event",
+							"storedProcedureParameters": {
+								"runId": {
+									"value": {
+										"value": "@pipeline().parameters.runId",
+										"type": "Expression"
+									},
+									"type": "String"
+								},
+								"domainCode": {
+									"value": "menus",
+									"type": "String"
+								},
+								"code": {
+									"value": "LOAD_FAILED",
+									"type": "String"
+								},
+								"message": {
+									"value": {
+										"value": "@concat('Store ', pipeline().parameters.nn, ': could not reach the IG SFTP: ', activity('Check IG file').error.message)",
+										"type": "Expression"
+									},
+									"type": "String"
+								},
+								"locId": {
+									"value": {
+										"value": "@pipeline().parameters.locId",
+										"type": "Expression"
+									},
+									"type": "Int32"
+								},
+								"step": {
+									"value": "ingest",
+									"type": "String"
+								}
+							}
+						},
+						"linkedServiceName": {
+							"referenceName": "ls_sql_domesday_mi",
+							"type": "LinkedServiceReference"
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"parameters": {
+					"runId": {
+						"type": "string"
+					},
+					"locId": {
+						"type": "int"
+					},
+					"nn": {
+						"type": "string"
+					},
+					"maxFileAgeHours": {
+						"type": "int",
+						"defaultValue": 20
+					},
+					"rejectThresholdPct": {
+						"type": "float",
+						"defaultValue": 1
+					},
+					"missingSeverity": {
+						"type": "string",
+						"defaultValue": "ERROR"
+					}
+				},
+				"variables": {
+					"rawFolder": {
+						"type": "String"
+					}
+				},
+				"folder": {
+					"name": "menus"
+				},
+				"annotations": []
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/datasets/ds_ig_sftp_mi_exp')]",
+				"[concat(variables('factoryId'), '/linkedServices/ls_sql_domesday_mi')]",
+				"[concat(variables('factoryId'), '/datasets/ds_datain_binary')]",
+				"[concat(variables('factoryId'), '/linkedServices/ls_fn_ig_etl')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/pl_menus_publish_store')]",
+			"type": "Microsoft.DataFactory/factories/pipelines",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"activities": [
+					{
+						"name": "Build menu JSON",
+						"type": "Lookup",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.00:10:00",
+							"retry": 1,
+							"retryIntervalInSeconds": 30
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"source": {
+								"type": "AzureSqlSource",
+								"sqlReaderStoredProcedureName": "menu.usp_publish_store",
+								"storedProcedureParameters": {
+									"locId": {
+										"type": "Int32",
+										"value": {
+											"value": "@pipeline().parameters.locId",
+											"type": "Expression"
+										}
+									},
+									"runId": {
+										"type": "String",
+										"value": {
+											"value": "@pipeline().parameters.runId",
+											"type": "Expression"
+										}
+									}
+								},
+								"queryTimeout": "00:10:00",
+								"partitionOption": "None"
+							},
+							"dataset": {
+								"referenceName": "ds_sql_domesday",
+								"type": "DatasetReference",
+								"parameters": {}
+							},
+							"firstRowOnly": true
+						}
+					},
+					{
+						"name": "If publishing",
+						"type": "IfCondition",
+						"dependsOn": [
+							{
+								"activity": "Build menu JSON",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"expression": {
+								"value": "@bool(activity('Build menu JSON').output.firstRow.shouldPublish)",
+								"type": "Expression"
+							},
+							"ifTrueActivities": [
+								{
+									"name": "Upload JSON",
+									"type": "WebActivity",
+									"dependsOn": [],
+									"policy": {
+										"timeout": "0.00:02:00",
+										"retry": 2,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"method": "PUT",
+										"headers": {
+											"x-ms-blob-type": "BlockBlob",
+											"x-ms-version": "2023-11-03",
+											"Content-Type": "application/json; charset=utf-8",
+											"x-ms-blob-content-type": "application/json; charset=utf-8",
+											"x-ms-blob-cache-control": "public, max-age=300"
+										},
+										"url": {
+											"value": "@concat('https://aubwebpub.blob.core.windows.net/menus/', activity('Build menu JSON').output.firstRow.blobName)",
+											"type": "Expression"
+										},
+										"body": {
+											"value": "@activity('Build menu JSON').output.firstRow.menuJson",
+											"type": "Expression"
+										},
+										"authentication": {
+											"type": "MSI",
+											"resource": "https://storage.azure.com/"
+										}
+									}
+								},
+								{
+									"name": "Record publish",
+									"type": "SqlServerStoredProcedure",
+									"dependsOn": [
+										{
+											"activity": "Upload JSON",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.00:10:00",
+										"retry": 1,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"storedProcedureName": "ops.usp_record_arrival",
+										"storedProcedureParameters": {
+											"runId": {
+												"value": {
+													"value": "@pipeline().parameters.runId",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"domainCode": {
+												"value": "menus",
+												"type": "String"
+											},
+											"feedCode": {
+												"value": "menu_json",
+												"type": "String"
+											},
+											"locId": {
+												"value": {
+													"value": "@pipeline().parameters.locId",
+													"type": "Expression"
+												},
+												"type": "Int32"
+											},
+											"rowCount": {
+												"value": {
+													"value": "@activity('Build menu JSON').output.firstRow.itemCount",
+													"type": "Expression"
+												},
+												"type": "Int32"
+											},
+											"sourcePath": {
+												"value": {
+													"value": "@concat('aubwebpub/menus/', activity('Build menu JSON').output.firstRow.blobName)",
+													"type": "Expression"
+												},
+												"type": "String"
+											}
+										}
+									},
+									"linkedServiceName": {
+										"referenceName": "ls_sql_domesday_mi",
+										"type": "LinkedServiceReference"
+									}
+								},
+								{
+									"name": "Log published",
+									"type": "SqlServerStoredProcedure",
+									"dependsOn": [
+										{
+											"activity": "Record publish",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.00:10:00",
+										"retry": 1,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"storedProcedureName": "ops.usp_log_event",
+										"storedProcedureParameters": {
+											"runId": {
+												"value": {
+													"value": "@pipeline().parameters.runId",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"domainCode": {
+												"value": "menus",
+												"type": "String"
+											},
+											"code": {
+												"value": "MENU_PUBLISHED",
+												"type": "String"
+											},
+											"message": {
+												"value": {
+													"value": "@concat('Store ', pipeline().parameters.nn, ': ', string(activity('Build menu JSON').output.firstRow.itemCount), ' items published')",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"locId": {
+												"value": {
+													"value": "@pipeline().parameters.locId",
+													"type": "Expression"
+												},
+												"type": "Int32"
+											},
+											"step": {
+												"value": "publish",
+												"type": "String"
+											}
+										}
+									},
+									"linkedServiceName": {
+										"referenceName": "ls_sql_domesday_mi",
+										"type": "LinkedServiceReference"
+									}
+								},
+								{
+									"name": "Log upload failure",
+									"type": "SqlServerStoredProcedure",
+									"dependsOn": [
+										{
+											"activity": "Upload JSON",
+											"dependencyConditions": [
+												"Failed"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.00:10:00",
+										"retry": 1,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"storedProcedureName": "ops.usp_log_event",
+										"storedProcedureParameters": {
+											"runId": {
+												"value": {
+													"value": "@pipeline().parameters.runId",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"domainCode": {
+												"value": "menus",
+												"type": "String"
+											},
+											"code": {
+												"value": "PUBLISH_FAILED",
+												"type": "String"
+											},
+											"message": {
+												"value": {
+													"value": "@concat('Store ', pipeline().parameters.nn, ': menu JSON upload failed: ', activity('Upload JSON').error.message)",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"locId": {
+												"value": {
+													"value": "@pipeline().parameters.locId",
+													"type": "Expression"
+												},
+												"type": "Int32"
+											},
+											"step": {
+												"value": "publish",
+												"type": "String"
+											}
+										}
+									},
+									"linkedServiceName": {
+										"referenceName": "ls_sql_domesday_mi",
+										"type": "LinkedServiceReference"
+									}
+								}
+							]
+						}
+					},
+					{
+						"name": "Log build failure",
+						"type": "SqlServerStoredProcedure",
+						"dependsOn": [
+							{
+								"activity": "Build menu JSON",
+								"dependencyConditions": [
+									"Failed"
+								]
+							}
+						],
+						"policy": {
+							"timeout": "0.00:10:00",
+							"retry": 1,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"storedProcedureName": "ops.usp_log_event",
+							"storedProcedureParameters": {
+								"runId": {
+									"value": {
+										"value": "@pipeline().parameters.runId",
+										"type": "Expression"
+									},
+									"type": "String"
+								},
+								"domainCode": {
+									"value": "menus",
+									"type": "String"
+								},
+								"code": {
+									"value": "PUBLISH_FAILED",
+									"type": "String"
+								},
+								"message": {
+									"value": {
+										"value": "@concat('Store ', pipeline().parameters.nn, ': building the menu JSON failed: ', activity('Build menu JSON').error.message)",
+										"type": "Expression"
+									},
+									"type": "String"
+								},
+								"locId": {
+									"value": {
+										"value": "@pipeline().parameters.locId",
+										"type": "Expression"
+									},
+									"type": "Int32"
+								},
+								"step": {
+									"value": "publish",
+									"type": "String"
+								}
+							}
+						},
+						"linkedServiceName": {
+							"referenceName": "ls_sql_domesday_mi",
+							"type": "LinkedServiceReference"
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"parameters": {
+					"runId": {
+						"type": "string"
+					},
+					"locId": {
+						"type": "int"
+					},
+					"nn": {
+						"type": "string"
+					}
+				},
+				"folder": {
+					"name": "menus"
+				},
+				"annotations": []
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/datasets/ds_sql_domesday')]",
+				"[concat(variables('factoryId'), '/linkedServices/ls_sql_domesday_mi')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/pl_ops_notify')]",
+			"type": "Microsoft.DataFactory/factories/pipelines",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"activities": [
+					{
+						"name": "Get payloads",
+						"type": "Lookup",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.00:10:00",
+							"retry": 1,
+							"retryIntervalInSeconds": 30
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"source": {
+								"type": "AzureSqlSource",
+								"sqlReaderStoredProcedureName": "ops.usp_run_notifications",
+								"storedProcedureParameters": {
+									"runId": {
+										"type": "String",
+										"value": {
+											"value": "@pipeline().parameters.runId",
+											"type": "Expression"
+										}
+									}
+								},
+								"queryTimeout": "00:10:00",
+								"partitionOption": "None"
+							},
+							"dataset": {
+								"referenceName": "ds_sql_domesday",
+								"type": "DatasetReference",
+								"parameters": {}
+							},
+							"firstRowOnly": true
+						}
+					},
+					{
+						"name": "If alert",
+						"type": "IfCondition",
+						"dependsOn": [
+							{
+								"activity": "Get payloads",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"expression": {
+								"value": "@bool(activity('Get payloads').output.firstRow.sendAlert)",
+								"type": "Expression"
+							},
+							"ifTrueActivities": [
+								{
+									"name": "Get Slack webhook - alert",
+									"type": "WebActivity",
+									"dependsOn": [],
+									"policy": {
+										"timeout": "0.00:02:00",
+										"retry": 2,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": true,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"method": "GET",
+										"headers": {},
+										"url": {
+											"value": "@concat('https://kv-aub-automation.vault.azure.net/secrets/', activity('Get payloads').output.firstRow.slackSecretName, '?api-version=7.4')",
+											"type": "Expression"
+										},
+										"authentication": {
+											"type": "MSI",
+											"resource": "https://vault.azure.net"
+										}
+									}
+								},
+								{
+									"name": "Post to Slack - alert",
+									"type": "WebActivity",
+									"dependsOn": [
+										{
+											"activity": "Get Slack webhook - alert",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.00:02:00",
+										"retry": 2,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": true
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"method": "POST",
+										"headers": {
+											"Content-Type": "application/json"
+										},
+										"url": {
+											"value": "@activity('Get Slack webhook - alert').output.value",
+											"type": "Expression"
+										},
+										"body": {
+											"value": "@json(activity('Get payloads').output.firstRow.slackAlertBody)",
+											"type": "Expression"
+										}
+									}
+								},
+								{
+									"name": "Send email - alert",
+									"type": "WebActivity",
+									"dependsOn": [],
+									"policy": {
+										"timeout": "0.00:02:00",
+										"retry": 2,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"method": "POST",
+										"headers": {
+											"Content-Type": "application/json"
+										},
+										"url": "https://graph.microsoft.com/v1.0/users/automation@aubreys.group/sendMail",
+										"body": {
+											"value": "@json(activity('Get payloads').output.firstRow.graphAlertBody)",
+											"type": "Expression"
+										},
+										"authentication": {
+											"type": "MSI",
+											"resource": "https://graph.microsoft.com"
+										}
+									}
+								},
+								{
+									"name": "Log slack sent - alert",
+									"type": "SqlServerStoredProcedure",
+									"dependsOn": [
+										{
+											"activity": "Post to Slack - alert",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.00:10:00",
+										"retry": 1,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"storedProcedureName": "ops.usp_log_notification",
+										"storedProcedureParameters": {
+											"runId": {
+												"value": {
+													"value": "@pipeline().parameters.runId",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"domainCode": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.domainCode",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"channel": {
+												"value": "slack",
+												"type": "String"
+											},
+											"kind": {
+												"value": "alert",
+												"type": "String"
+											},
+											"status": {
+												"value": "sent",
+												"type": "String"
+											},
+											"recipient": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.areaCode",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"subject": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.alertSubject",
+													"type": "Expression"
+												},
+												"type": "String"
+											}
+										}
+									},
+									"linkedServiceName": {
+										"referenceName": "ls_sql_domesday_mi",
+										"type": "LinkedServiceReference"
+									}
+								},
+								{
+									"name": "Log slack failed - alert",
+									"type": "SqlServerStoredProcedure",
+									"dependsOn": [
+										{
+											"activity": "Post to Slack - alert",
+											"dependencyConditions": [
+												"Failed"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.00:10:00",
+										"retry": 1,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"storedProcedureName": "ops.usp_log_notification",
+										"storedProcedureParameters": {
+											"runId": {
+												"value": {
+													"value": "@pipeline().parameters.runId",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"domainCode": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.domainCode",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"channel": {
+												"value": "slack",
+												"type": "String"
+											},
+											"kind": {
+												"value": "alert",
+												"type": "String"
+											},
+											"status": {
+												"value": "failed",
+												"type": "String"
+											},
+											"recipient": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.areaCode",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"subject": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.alertSubject",
+													"type": "Expression"
+												},
+												"type": "String"
+											}
+										}
+									},
+									"linkedServiceName": {
+										"referenceName": "ls_sql_domesday_mi",
+										"type": "LinkedServiceReference"
+									}
+								},
+								{
+									"name": "Log email sent - alert",
+									"type": "SqlServerStoredProcedure",
+									"dependsOn": [
+										{
+											"activity": "Send email - alert",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.00:10:00",
+										"retry": 1,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"storedProcedureName": "ops.usp_log_notification",
+										"storedProcedureParameters": {
+											"runId": {
+												"value": {
+													"value": "@pipeline().parameters.runId",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"domainCode": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.domainCode",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"channel": {
+												"value": "email",
+												"type": "String"
+											},
+											"kind": {
+												"value": "alert",
+												"type": "String"
+											},
+											"status": {
+												"value": "sent",
+												"type": "String"
+											},
+											"recipient": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.emailTo",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"subject": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.alertSubject",
+													"type": "Expression"
+												},
+												"type": "String"
+											}
+										}
+									},
+									"linkedServiceName": {
+										"referenceName": "ls_sql_domesday_mi",
+										"type": "LinkedServiceReference"
+									}
+								},
+								{
+									"name": "Log email failed - alert",
+									"type": "SqlServerStoredProcedure",
+									"dependsOn": [
+										{
+											"activity": "Send email - alert",
+											"dependencyConditions": [
+												"Failed"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.00:10:00",
+										"retry": 1,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"storedProcedureName": "ops.usp_log_notification",
+										"storedProcedureParameters": {
+											"runId": {
+												"value": {
+													"value": "@pipeline().parameters.runId",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"domainCode": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.domainCode",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"channel": {
+												"value": "email",
+												"type": "String"
+											},
+											"kind": {
+												"value": "alert",
+												"type": "String"
+											},
+											"status": {
+												"value": "failed",
+												"type": "String"
+											},
+											"recipient": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.emailTo",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"subject": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.alertSubject",
+													"type": "Expression"
+												},
+												"type": "String"
+											}
+										}
+									},
+									"linkedServiceName": {
+										"referenceName": "ls_sql_domesday_mi",
+										"type": "LinkedServiceReference"
+									}
+								},
+								{
+									"name": "Log Slack secret failure - alert",
+									"type": "SqlServerStoredProcedure",
+									"dependsOn": [
+										{
+											"activity": "Get Slack webhook - alert",
+											"dependencyConditions": [
+												"Failed"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.00:10:00",
+										"retry": 1,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"storedProcedureName": "ops.usp_log_notification",
+										"storedProcedureParameters": {
+											"runId": {
+												"value": {
+													"value": "@pipeline().parameters.runId",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"domainCode": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.domainCode",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"channel": {
+												"value": "slack",
+												"type": "String"
+											},
+											"kind": {
+												"value": "alert",
+												"type": "String"
+											},
+											"status": {
+												"value": "failed",
+												"type": "String"
+											},
+											"detail": {
+												"value": "Could not read the Slack webhook secret from Key Vault",
+												"type": "String"
+											}
+										}
+									},
+									"linkedServiceName": {
+										"referenceName": "ls_sql_domesday_mi",
+										"type": "LinkedServiceReference"
+									}
+								}
+							]
+						}
+					},
+					{
+						"name": "If digest",
+						"type": "IfCondition",
+						"dependsOn": [
+							{
+								"activity": "Get payloads",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"expression": {
+								"value": "@bool(activity('Get payloads').output.firstRow.sendDigest)",
+								"type": "Expression"
+							},
+							"ifTrueActivities": [
+								{
+									"name": "Get Slack webhook - digest",
+									"type": "WebActivity",
+									"dependsOn": [],
+									"policy": {
+										"timeout": "0.00:02:00",
+										"retry": 2,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": true,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"method": "GET",
+										"headers": {},
+										"url": {
+											"value": "@concat('https://kv-aub-automation.vault.azure.net/secrets/', activity('Get payloads').output.firstRow.slackSecretName, '?api-version=7.4')",
+											"type": "Expression"
+										},
+										"authentication": {
+											"type": "MSI",
+											"resource": "https://vault.azure.net"
+										}
+									}
+								},
+								{
+									"name": "Post to Slack - digest",
+									"type": "WebActivity",
+									"dependsOn": [
+										{
+											"activity": "Get Slack webhook - digest",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.00:02:00",
+										"retry": 2,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": true
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"method": "POST",
+										"headers": {
+											"Content-Type": "application/json"
+										},
+										"url": {
+											"value": "@activity('Get Slack webhook - digest').output.value",
+											"type": "Expression"
+										},
+										"body": {
+											"value": "@json(activity('Get payloads').output.firstRow.slackDigestBody)",
+											"type": "Expression"
+										}
+									}
+								},
+								{
+									"name": "Send email - digest",
+									"type": "WebActivity",
+									"dependsOn": [],
+									"policy": {
+										"timeout": "0.00:02:00",
+										"retry": 2,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"method": "POST",
+										"headers": {
+											"Content-Type": "application/json"
+										},
+										"url": "https://graph.microsoft.com/v1.0/users/automation@aubreys.group/sendMail",
+										"body": {
+											"value": "@json(activity('Get payloads').output.firstRow.graphDigestBody)",
+											"type": "Expression"
+										},
+										"authentication": {
+											"type": "MSI",
+											"resource": "https://graph.microsoft.com"
+										}
+									}
+								},
+								{
+									"name": "Log slack sent - digest",
+									"type": "SqlServerStoredProcedure",
+									"dependsOn": [
+										{
+											"activity": "Post to Slack - digest",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.00:10:00",
+										"retry": 1,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"storedProcedureName": "ops.usp_log_notification",
+										"storedProcedureParameters": {
+											"runId": {
+												"value": {
+													"value": "@pipeline().parameters.runId",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"domainCode": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.domainCode",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"channel": {
+												"value": "slack",
+												"type": "String"
+											},
+											"kind": {
+												"value": "digest",
+												"type": "String"
+											},
+											"status": {
+												"value": "sent",
+												"type": "String"
+											},
+											"recipient": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.areaCode",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"subject": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.digestSubject",
+													"type": "Expression"
+												},
+												"type": "String"
+											}
+										}
+									},
+									"linkedServiceName": {
+										"referenceName": "ls_sql_domesday_mi",
+										"type": "LinkedServiceReference"
+									}
+								},
+								{
+									"name": "Log slack failed - digest",
+									"type": "SqlServerStoredProcedure",
+									"dependsOn": [
+										{
+											"activity": "Post to Slack - digest",
+											"dependencyConditions": [
+												"Failed"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.00:10:00",
+										"retry": 1,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"storedProcedureName": "ops.usp_log_notification",
+										"storedProcedureParameters": {
+											"runId": {
+												"value": {
+													"value": "@pipeline().parameters.runId",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"domainCode": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.domainCode",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"channel": {
+												"value": "slack",
+												"type": "String"
+											},
+											"kind": {
+												"value": "digest",
+												"type": "String"
+											},
+											"status": {
+												"value": "failed",
+												"type": "String"
+											},
+											"recipient": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.areaCode",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"subject": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.digestSubject",
+													"type": "Expression"
+												},
+												"type": "String"
+											}
+										}
+									},
+									"linkedServiceName": {
+										"referenceName": "ls_sql_domesday_mi",
+										"type": "LinkedServiceReference"
+									}
+								},
+								{
+									"name": "Log email sent - digest",
+									"type": "SqlServerStoredProcedure",
+									"dependsOn": [
+										{
+											"activity": "Send email - digest",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.00:10:00",
+										"retry": 1,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"storedProcedureName": "ops.usp_log_notification",
+										"storedProcedureParameters": {
+											"runId": {
+												"value": {
+													"value": "@pipeline().parameters.runId",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"domainCode": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.domainCode",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"channel": {
+												"value": "email",
+												"type": "String"
+											},
+											"kind": {
+												"value": "digest",
+												"type": "String"
+											},
+											"status": {
+												"value": "sent",
+												"type": "String"
+											},
+											"recipient": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.emailTo",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"subject": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.digestSubject",
+													"type": "Expression"
+												},
+												"type": "String"
+											}
+										}
+									},
+									"linkedServiceName": {
+										"referenceName": "ls_sql_domesday_mi",
+										"type": "LinkedServiceReference"
+									}
+								},
+								{
+									"name": "Log email failed - digest",
+									"type": "SqlServerStoredProcedure",
+									"dependsOn": [
+										{
+											"activity": "Send email - digest",
+											"dependencyConditions": [
+												"Failed"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.00:10:00",
+										"retry": 1,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"storedProcedureName": "ops.usp_log_notification",
+										"storedProcedureParameters": {
+											"runId": {
+												"value": {
+													"value": "@pipeline().parameters.runId",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"domainCode": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.domainCode",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"channel": {
+												"value": "email",
+												"type": "String"
+											},
+											"kind": {
+												"value": "digest",
+												"type": "String"
+											},
+											"status": {
+												"value": "failed",
+												"type": "String"
+											},
+											"recipient": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.emailTo",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"subject": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.digestSubject",
+													"type": "Expression"
+												},
+												"type": "String"
+											}
+										}
+									},
+									"linkedServiceName": {
+										"referenceName": "ls_sql_domesday_mi",
+										"type": "LinkedServiceReference"
+									}
+								},
+								{
+									"name": "Log Slack secret failure - digest",
+									"type": "SqlServerStoredProcedure",
+									"dependsOn": [
+										{
+											"activity": "Get Slack webhook - digest",
+											"dependencyConditions": [
+												"Failed"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.00:10:00",
+										"retry": 1,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"storedProcedureName": "ops.usp_log_notification",
+										"storedProcedureParameters": {
+											"runId": {
+												"value": {
+													"value": "@pipeline().parameters.runId",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"domainCode": {
+												"value": {
+													"value": "@activity('Get payloads').output.firstRow.domainCode",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"channel": {
+												"value": "slack",
+												"type": "String"
+											},
+											"kind": {
+												"value": "digest",
+												"type": "String"
+											},
+											"status": {
+												"value": "failed",
+												"type": "String"
+											},
+											"detail": {
+												"value": "Could not read the Slack webhook secret from Key Vault",
+												"type": "String"
+											}
+										}
+									},
+									"linkedServiceName": {
+										"referenceName": "ls_sql_domesday_mi",
+										"type": "LinkedServiceReference"
+									}
+								}
+							]
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"parameters": {
+					"runId": {
+						"type": "string"
+					}
+				},
+				"folder": {
+					"name": "ops"
+				},
+				"annotations": []
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/datasets/ds_sql_domesday')]",
+				"[concat(variables('factoryId'), '/linkedServices/ls_sql_domesday_mi')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/pl_ops_watchdog')]",
+			"type": "Microsoft.DataFactory/factories/pipelines",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"activities": [
+					{
+						"name": "Start run log",
+						"type": "SqlServerStoredProcedure",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.00:10:00",
+							"retry": 1,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"storedProcedureName": "ops.usp_run_start",
+							"storedProcedureParameters": {
+								"runId": {
+									"value": {
+										"value": "@pipeline().RunId",
+										"type": "Expression"
+									},
+									"type": "String"
+								},
+								"domainCode": {
+									"value": "ops",
+									"type": "String"
+								},
+								"pipelineName": {
+									"value": {
+										"value": "@pipeline().Pipeline",
+										"type": "Expression"
+									},
+									"type": "String"
+								},
+								"triggerName": {
+									"value": {
+										"value": "@pipeline().TriggerName",
+										"type": "Expression"
+									},
+									"type": "String"
+								},
+								"triggerType": {
+									"value": {
+										"value": "@pipeline().TriggerType",
+										"type": "Expression"
+									},
+									"type": "String"
+								}
+							}
+						},
+						"linkedServiceName": {
+							"referenceName": "ls_sql_domesday_mi",
+							"type": "LinkedServiceReference"
+						}
+					},
+					{
+						"name": "Find late feeds",
+						"type": "Lookup",
+						"dependsOn": [
+							{
+								"activity": "Start run log",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"policy": {
+							"timeout": "0.00:10:00",
+							"retry": 1,
+							"retryIntervalInSeconds": 30
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"source": {
+								"type": "AzureSqlSource",
+								"sqlReaderStoredProcedureName": "ops.usp_watchdog",
+								"storedProcedureParameters": {
+									"runId": {
+										"type": "String",
+										"value": {
+											"value": "@pipeline().RunId",
+											"type": "Expression"
+										}
+									}
+								},
+								"queryTimeout": "00:10:00",
+								"partitionOption": "None"
+							},
+							"dataset": {
+								"referenceName": "ds_sql_domesday",
+								"type": "DatasetReference",
+								"parameters": {}
+							},
+							"firstRowOnly": false
+						}
+					},
+					{
+						"name": "Alert each area",
+						"type": "ForEach",
+						"dependsOn": [
+							{
+								"activity": "Find late feeds",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"items": {
+								"value": "@activity('Find late feeds').output.value",
+								"type": "Expression"
+							},
+							"isSequential": true,
+							"activities": [
+								{
+									"name": "Get Slack webhook",
+									"type": "WebActivity",
+									"dependsOn": [],
+									"policy": {
+										"timeout": "0.00:02:00",
+										"retry": 2,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": true,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"method": "GET",
+										"headers": {},
+										"url": {
+											"value": "@concat('https://kv-aub-automation.vault.azure.net/secrets/', item().slackSecretName, '?api-version=7.4')",
+											"type": "Expression"
+										},
+										"authentication": {
+											"type": "MSI",
+											"resource": "https://vault.azure.net"
+										}
+									}
+								},
+								{
+									"name": "Post to Slack",
+									"type": "WebActivity",
+									"dependsOn": [
+										{
+											"activity": "Get Slack webhook",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.00:02:00",
+										"retry": 2,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": true
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"method": "POST",
+										"headers": {
+											"Content-Type": "application/json"
+										},
+										"url": {
+											"value": "@activity('Get Slack webhook').output.value",
+											"type": "Expression"
+										},
+										"body": {
+											"value": "@json(item().slackBody)",
+											"type": "Expression"
+										}
+									}
+								},
+								{
+									"name": "Send email",
+									"type": "WebActivity",
+									"dependsOn": [],
+									"policy": {
+										"timeout": "0.00:02:00",
+										"retry": 2,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"method": "POST",
+										"headers": {
+											"Content-Type": "application/json"
+										},
+										"url": "https://graph.microsoft.com/v1.0/users/automation@aubreys.group/sendMail",
+										"body": {
+											"value": "@json(item().graphBody)",
+											"type": "Expression"
+										},
+										"authentication": {
+											"type": "MSI",
+											"resource": "https://graph.microsoft.com"
+										}
+									}
+								},
+								{
+									"name": "Log email",
+									"type": "SqlServerStoredProcedure",
+									"dependsOn": [
+										{
+											"activity": "Send email",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.00:10:00",
+										"retry": 1,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"storedProcedureName": "ops.usp_log_notification",
+										"storedProcedureParameters": {
+											"runId": {
+												"value": {
+													"value": "@pipeline().RunId",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"domainCode": {
+												"value": "ops",
+												"type": "String"
+											},
+											"channel": {
+												"value": "email",
+												"type": "String"
+											},
+											"kind": {
+												"value": "watchdog",
+												"type": "String"
+											},
+											"status": {
+												"value": "sent",
+												"type": "String"
+											},
+											"recipient": {
+												"value": {
+													"value": "@item().emailTo",
+													"type": "Expression"
+												},
+												"type": "String"
+											},
+											"subject": {
+												"value": {
+													"value": "@item().subject",
+													"type": "Expression"
+												},
+												"type": "String"
+											}
+										}
+									},
+									"linkedServiceName": {
+										"referenceName": "ls_sql_domesday_mi",
+										"type": "LinkedServiceReference"
+									}
+								}
+							]
+						}
+					},
+					{
+						"name": "Purge old log rows",
+						"type": "SqlServerStoredProcedure",
+						"dependsOn": [
+							{
+								"activity": "Alert each area",
+								"dependencyConditions": [
+									"Completed"
+								]
+							}
+						],
+						"policy": {
+							"timeout": "0.00:10:00",
+							"retry": 1,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"storedProcedureName": "ops.usp_purge"
+						},
+						"linkedServiceName": {
+							"referenceName": "ls_sql_domesday_mi",
+							"type": "LinkedServiceReference"
+						}
+					},
+					{
+						"name": "End run log",
+						"type": "SqlServerStoredProcedure",
+						"dependsOn": [
+							{
+								"activity": "Purge old log rows",
+								"dependencyConditions": [
+									"Completed"
+								]
+							}
+						],
+						"policy": {
+							"timeout": "0.00:10:00",
+							"retry": 1,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"storedProcedureName": "ops.usp_run_end",
+							"storedProcedureParameters": {
+								"runId": {
+									"value": {
+										"value": "@pipeline().RunId",
+										"type": "Expression"
+									},
+									"type": "String"
+								},
+								"failureMessage": {
+									"value": {
+										"value": "@coalesce(activity('Alert each area')?.error?.message, '')",
+										"type": "Expression"
+									},
+									"type": "String"
+								}
+							}
+						},
+						"linkedServiceName": {
+							"referenceName": "ls_sql_domesday_mi",
+							"type": "LinkedServiceReference"
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"folder": {
+					"name": "ops"
+				},
+				"annotations": []
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/ls_sql_domesday_mi')]",
+				"[concat(variables('factoryId'), '/datasets/ds_sql_domesday')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/ds_datain_binary')]",
+			"type": "Microsoft.DataFactory/factories/datasets",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"linkedServiceName": {
+					"referenceName": "ls_adls_aubdatain",
+					"type": "LinkedServiceReference"
+				},
+				"parameters": {
+					"folderPath": {
+						"type": "string"
+					},
+					"fileName": {
+						"type": "string"
+					}
+				},
+				"folder": {
+					"name": "infogenesis"
+				},
+				"annotations": [],
+				"type": "Binary",
+				"typeProperties": {
+					"location": {
+						"type": "AzureBlobFSLocation",
+						"fileName": {
+							"value": "@dataset().fileName",
+							"type": "Expression"
+						},
+						"folderPath": {
+							"value": "@dataset().folderPath",
+							"type": "Expression"
+						},
+						"fileSystem": "infogenesis"
+					}
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/ls_adls_aubdatain')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/ds_datain_csv')]",
+			"type": "Microsoft.DataFactory/factories/datasets",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"linkedServiceName": {
+					"referenceName": "ls_adls_aubdatain",
+					"type": "LinkedServiceReference"
+				},
+				"parameters": {
+					"folderPath": {
+						"type": "string"
+					}
+				},
+				"folder": {
+					"name": "infogenesis"
+				},
+				"annotations": [],
+				"type": "DelimitedText",
+				"typeProperties": {
+					"location": {
+						"type": "AzureBlobFSLocation",
+						"folderPath": {
+							"value": "@dataset().folderPath",
+							"type": "Expression"
+						},
+						"fileSystem": "infogenesis"
+					},
+					"columnDelimiter": ",",
+					"encodingName": "UTF-8",
+					"escapeChar": "\"",
+					"firstRowAsHeader": true,
+					"quoteChar": "\""
+				},
+				"schema": []
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/ls_adls_aubdatain')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/ds_ig_sftp_mi_exp')]",
+			"type": "Microsoft.DataFactory/factories/datasets",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"linkedServiceName": {
+					"referenceName": "ls_sftp_ig",
+					"type": "LinkedServiceReference"
+				},
+				"parameters": {
+					"nn": {
+						"type": "string"
+					}
+				},
+				"folder": {
+					"name": "infogenesis"
+				},
+				"annotations": [],
+				"type": "Binary",
+				"typeProperties": {
+					"location": {
+						"type": "SftpLocation",
+						"fileName": "MI_Exp.txt",
+						"folderPath": {
+							"value": "@concat('Export/', dataset().nn)",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/ls_sftp_ig')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/ds_sql_domesday')]",
+			"type": "Microsoft.DataFactory/factories/datasets",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"linkedServiceName": {
+					"referenceName": "ls_sql_domesday_mi",
+					"type": "LinkedServiceReference"
+				},
+				"folder": {
+					"name": "domesday"
+				},
+				"annotations": [],
+				"type": "AzureSqlTable",
+				"schema": [],
+				"typeProperties": {}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/ls_sql_domesday_mi')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/ds_sql_stg_table')]",
+			"type": "Microsoft.DataFactory/factories/datasets",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"linkedServiceName": {
+					"referenceName": "ls_sql_domesday_mi",
+					"type": "LinkedServiceReference"
+				},
+				"parameters": {
+					"tableName": {
+						"type": "string"
+					}
+				},
+				"folder": {
+					"name": "domesday"
+				},
+				"annotations": [],
+				"type": "AzureSqlTable",
+				"schema": [],
+				"typeProperties": {
+					"schema": "stg",
+					"table": {
+						"value": "@dataset().tableName",
+						"type": "Expression"
+					}
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/ls_sql_domesday_mi')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/ls_adls_aubdatain')]",
+			"type": "Microsoft.DataFactory/factories/linkedServices",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"description": "aubdatain (ADLS Gen2) using the factory's managed identity.",
+				"annotations": [],
+				"type": "AzureBlobFS",
+				"typeProperties": {
+					"url": "[parameters('ls_adls_aubdatain_properties_typeProperties_url')]"
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/ls_fn_ig_etl')]",
+			"type": "Microsoft.DataFactory/factories/linkedServices",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"annotations": [],
+				"type": "AzureFunction",
+				"typeProperties": {
+					"functionAppUrl": "[parameters('ls_fn_ig_etl_properties_typeProperties_functionAppUrl')]",
+					"authentication": "MSI",
+					"resourceId": "api://5d0b5f6b-8185-47a7-8ae6-42bbef337164",
+					"functionKey": {
+						"type": "SecureString",
+						"value": "[parameters('ls_fn_ig_etl_functionKey')]"
+					}
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/ls_kv_automation')]",
+			"type": "Microsoft.DataFactory/factories/linkedServices",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"annotations": [],
+				"type": "AzureKeyVault",
+				"typeProperties": {
+					"baseUrl": "[parameters('ls_kv_automation_properties_typeProperties_baseUrl')]"
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/ls_sftp_ig')]",
+			"type": "Microsoft.DataFactory/factories/linkedServices",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"description": "InfoGenesis export SFTP (Agilysys hosted). Password in Key Vault; replaces the Basic-auth IgSftp once proven.",
+				"annotations": [],
+				"type": "Sftp",
+				"typeProperties": {
+					"host": "[parameters('ls_sftp_ig_properties_typeProperties_host')]",
+					"port": 22,
+					"skipHostKeyValidation": false,
+					"hostKeyFingerprint": "[parameters('ls_sftp_ig_properties_typeProperties_hostKeyFingerprint')]",
+					"authenticationType": "Basic",
+					"userName": "[parameters('ls_sftp_ig_properties_typeProperties_userName')]",
+					"password": {
+						"type": "AzureKeyVaultSecret",
+						"store": {
+							"referenceName": "ls_kv_automation",
+							"type": "LinkedServiceReference"
+						},
+						"secretName": "ig-sftp-password"
+					}
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/ls_kv_automation')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/ls_sql_domesday_mi')]",
+			"type": "Microsoft.DataFactory/factories/linkedServices",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"annotations": [],
+				"type": "AzureSqlDatabase",
+				"typeProperties": {
+					"server": "[parameters('ls_sql_domesday_mi_properties_typeProperties_server')]",
+					"database": "[parameters('ls_sql_domesday_mi_properties_typeProperties_database')]",
+					"encrypt": "mandatory",
+					"trustServerCertificate": false,
+					"authenticationType": "SystemAssignedManagedIdentity"
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/tr_menus_daily_0730')]",
+			"type": "Microsoft.DataFactory/factories/triggers",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"description": "Daily menu load. A missing/stale IG file is only a WARN here because the 8:15 retry follows.",
+				"annotations": [],
+				"runtimeState": "Stopped",
+				"pipelines": [
+					{
+						"pipelineReference": {
+							"referenceName": "pl_menus_daily",
+							"type": "PipelineReference"
+						},
+						"parameters": {
+							"onlyMissing": "[parameters('tr_menus_daily_0730_properties_pl_menus_daily_parameters_onlyMissing')]",
+							"missingSeverity": "[parameters('tr_menus_daily_0730_properties_pl_menus_daily_parameters_missingSeverity')]"
+						}
+					}
+				],
+				"type": "ScheduleTrigger",
+				"typeProperties": {
+					"recurrence": {
+						"frequency": "Day",
+						"interval": 1,
+						"startTime": "2026-10-20T00:00:00",
+						"timeZone": "Eastern Standard Time",
+						"schedule": {
+							"minutes": [
+								30
+							],
+							"hours": [
+								7
+							]
+						}
+					}
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/pipelines/pl_menus_daily')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/tr_menus_retry_0815')]",
+			"type": "Microsoft.DataFactory/factories/triggers",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"description": "Retries stores that did not load at 7:30. Still missing = ERROR alert.",
+				"annotations": [],
+				"runtimeState": "Stopped",
+				"pipelines": [
+					{
+						"pipelineReference": {
+							"referenceName": "pl_menus_daily",
+							"type": "PipelineReference"
+						},
+						"parameters": {
+							"onlyMissing": "[parameters('tr_menus_retry_0815_properties_pl_menus_daily_parameters_onlyMissing')]",
+							"missingSeverity": "[parameters('tr_menus_retry_0815_properties_pl_menus_daily_parameters_missingSeverity')]"
+						}
+					}
+				],
+				"type": "ScheduleTrigger",
+				"typeProperties": {
+					"recurrence": {
+						"frequency": "Day",
+						"interval": 1,
+						"startTime": "2026-10-20T00:00:00",
+						"timeZone": "Eastern Standard Time",
+						"schedule": {
+							"minutes": [
+								15
+							],
+							"hours": [
+								8
+							]
+						}
+					}
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/pipelines/pl_menus_daily')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/tr_ops_watchdog_0930')]",
+			"type": "Microsoft.DataFactory/factories/triggers",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"description": "Alerts on any expected feed that has not arrived (catches pipelines that never ran).",
+				"annotations": [],
+				"runtimeState": "Stopped",
+				"pipelines": [
+					{
+						"pipelineReference": {
+							"referenceName": "pl_ops_watchdog",
+							"type": "PipelineReference"
+						},
+						"parameters": {}
+					}
+				],
+				"type": "ScheduleTrigger",
+				"typeProperties": {
+					"recurrence": {
+						"frequency": "Day",
+						"interval": 1,
+						"startTime": "2026-10-20T00:00:00",
+						"timeZone": "Eastern Standard Time",
+						"schedule": {
+							"minutes": [
+								30
+							],
+							"hours": [
+								9
+							]
+						}
+					}
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/pipelines/pl_ops_watchdog')]"
+			]
+		}
+	]
+}

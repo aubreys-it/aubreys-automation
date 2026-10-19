@@ -1,0 +1,133 @@
+{
+	"$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"factoryName": {
+			"type": "string",
+			"metadata": "Data Factory name",
+			"defaultValue": "adf-aub-ops"
+		},
+		"ls_fn_ig_etl_functionKey": {
+			"type": "secureString",
+			"metadata": "Secure string for 'functionKey' of 'ls_fn_ig_etl'"
+		},
+		"ls_adls_aubdatain_properties_typeProperties_url": {
+			"type": "string",
+			"defaultValue": "https://aubdatain.dfs.core.windows.net/"
+		},
+		"ls_fn_ig_etl_properties_typeProperties_functionAppUrl": {
+			"type": "string",
+			"defaultValue": "https://aub-ig-etl-btfsheaedcfuhyby.eastus-01.azurewebsites.net"
+		},
+		"ls_kv_automation_properties_typeProperties_baseUrl": {
+			"type": "string",
+			"defaultValue": "https://kv-aub-automation.vault.azure.net/"
+		},
+		"ls_sftp_ig_properties_typeProperties_host": {
+			"type": "string",
+			"defaultValue": "portal.ftp.infogenesisasp.com"
+		},
+		"ls_sftp_ig_properties_typeProperties_hostKeyFingerprint": {
+			"type": "string",
+			"defaultValue": "ssh-rsa 2048 0c:98:90:73:46:3d:d6:90:8d:a3:90:d8:a8:50:f4:e0"
+		},
+		"ls_sftp_ig_properties_typeProperties_userName": {
+			"type": "string",
+			"defaultValue": "AUBR1.ftpadmin"
+		},
+		"ls_sql_domesday_mi_properties_typeProperties_server": {
+			"type": "string",
+			"defaultValue": "mcp-alex.database.windows.net"
+		},
+		"ls_sql_domesday_mi_properties_typeProperties_database": {
+			"type": "string",
+			"defaultValue": "domesday"
+		},
+		"tr_menus_daily_0730_properties_pl_menus_daily_parameters_onlyMissing": {
+			"type": "bool",
+			"defaultValue": false
+		},
+		"tr_menus_daily_0730_properties_pl_menus_daily_parameters_missingSeverity": {
+			"type": "string",
+			"defaultValue": "WARN"
+		},
+		"tr_menus_retry_0815_properties_pl_menus_daily_parameters_onlyMissing": {
+			"type": "bool",
+			"defaultValue": true
+		},
+		"tr_menus_retry_0815_properties_pl_menus_daily_parameters_missingSeverity": {
+			"type": "string",
+			"defaultValue": "ERROR"
+		},
+		"containerUri": {
+			"type": "string",
+			"metadata": "URI to storage account containing linked ARM templates"
+		},
+		"containerSasToken": {
+			"type": "string",
+			"metadata": "Sas token to storage account containing linked ARM templates"
+		}
+	},
+	"variables": {
+		"factoryId": "[concat('Microsoft.DataFactory/factories/', parameters('factoryName'))]"
+	},
+	"resources": [
+		{
+			"name": "adf-aub-ops_ArmTemplate_0",
+			"type": "Microsoft.Resources/deployments",
+			"apiVersion": "2024-03-01",
+			"properties": {
+				"mode": "incremental",
+				"templateLink": {
+					"uri": "[concat(parameters('containerUri'), '/ArmTemplate_0.json', parameters('containerSasToken'))]",
+					"contentVersion": "1.0.0.0"
+				},
+				"parameters": {
+					"factoryName": {
+						"value": "[parameters('factoryName')]"
+					},
+					"ls_fn_ig_etl_functionKey": {
+						"value": "[parameters('ls_fn_ig_etl_functionKey')]"
+					},
+					"ls_adls_aubdatain_properties_typeProperties_url": {
+						"value": "[parameters('ls_adls_aubdatain_properties_typeProperties_url')]"
+					},
+					"ls_fn_ig_etl_properties_typeProperties_functionAppUrl": {
+						"value": "[parameters('ls_fn_ig_etl_properties_typeProperties_functionAppUrl')]"
+					},
+					"ls_kv_automation_properties_typeProperties_baseUrl": {
+						"value": "[parameters('ls_kv_automation_properties_typeProperties_baseUrl')]"
+					},
+					"ls_sql_domesday_mi_properties_typeProperties_server": {
+						"value": "[parameters('ls_sql_domesday_mi_properties_typeProperties_server')]"
+					},
+					"ls_sql_domesday_mi_properties_typeProperties_database": {
+						"value": "[parameters('ls_sql_domesday_mi_properties_typeProperties_database')]"
+					},
+					"ls_sftp_ig_properties_typeProperties_host": {
+						"value": "[parameters('ls_sftp_ig_properties_typeProperties_host')]"
+					},
+					"ls_sftp_ig_properties_typeProperties_hostKeyFingerprint": {
+						"value": "[parameters('ls_sftp_ig_properties_typeProperties_hostKeyFingerprint')]"
+					},
+					"ls_sftp_ig_properties_typeProperties_userName": {
+						"value": "[parameters('ls_sftp_ig_properties_typeProperties_userName')]"
+					},
+					"tr_menus_daily_0730_properties_pl_menus_daily_parameters_onlyMissing": {
+						"value": "[parameters('tr_menus_daily_0730_properties_pl_menus_daily_parameters_onlyMissing')]"
+					},
+					"tr_menus_daily_0730_properties_pl_menus_daily_parameters_missingSeverity": {
+						"value": "[parameters('tr_menus_daily_0730_properties_pl_menus_daily_parameters_missingSeverity')]"
+					},
+					"tr_menus_retry_0815_properties_pl_menus_daily_parameters_onlyMissing": {
+						"value": "[parameters('tr_menus_retry_0815_properties_pl_menus_daily_parameters_onlyMissing')]"
+					},
+					"tr_menus_retry_0815_properties_pl_menus_daily_parameters_missingSeverity": {
+						"value": "[parameters('tr_menus_retry_0815_properties_pl_menus_daily_parameters_missingSeverity')]"
+					}
+				}
+			},
+			"dependsOn": []
+		}
+	]
+}
