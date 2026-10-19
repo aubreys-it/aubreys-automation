@@ -1,0 +1,52 @@
+/* Printable menu: US Letter, three columns, black on white whatever the theme. */
+@page { size: letter; margin: 0.45in 0.45in 0.5in; }
+*, *::before, *::after { box-sizing: border-box; }
+body.print {
+  margin: 0;
+  color: #000; background: #fff;
+  font: 400 8.6pt/1.3 var(--font-body);
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+
+/* On screen, show the sheet like a page so managers see what will print. */
+@media screen {
+  body.print { background: #d9d9d6; padding: 16px; }
+  .sheet-head, .sheet, .sheet-foot, .sheet-empty { width: min(7.6in, 100%); margin-left: auto; margin-right: auto; background: #fff; padding-left: 0.3in; padding-right: 0.3in; }
+  .sheet-head { padding-top: 0.3in; }
+  .sheet-foot { padding-bottom: 0.3in; }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: min(7.6in, 100%); margin: 0 auto 12px; font-size: 14px; }
+  .toolbar button { font: 600 16px/1 var(--font-display); padding: 10px 16px; border: 0; border-radius: 6px; background: #000; color: #fff; cursor: pointer; }
+}
+@media print { .toolbar { display: none; } }
+
+.sheet-head {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 0.3in;
+  padding-bottom: 6pt; border-bottom: 2.5pt solid #000;
+}
+.sheet-head img { height: 0.62in; width: auto; }
+.sheet-store { margin: 0; font: 700 22pt/1 var(--font-display); }
+.sheet-head h1 { margin: 0; font: 700 34pt/0.85 var(--font-display); }
+
+.sheet { column-count: 3; column-gap: 0.28in; padding-top: 10pt; }
+.section { margin-bottom: 9pt; }
+.section h2 {
+  display: flex; align-items: baseline;
+  margin: 0 0 3pt; padding-bottom: 1.5pt;
+  border-bottom: 1pt solid #000;
+  font: 600 12.5pt/1.05 var(--font-display);
+  break-after: avoid;
+}
+.section h2 > span:first-child { flex: 1; }
+.section h2 .cols { display: flex; font: 500 8pt/1 var(--font-display); }
+.cols span, .section-multi .price { width: 0.42in; text-align: right; }
+
+.item { padding: 1.6pt 0; break-inside: avoid; }
+.line { display: flex; align-items: baseline; align-items: last baseline; }
+.name { flex: 0 1 auto; font-weight: 600; }
+.leader { flex: 1 1 6pt; min-width: 6pt; margin: 0 3pt; border-bottom: 0.9pt dotted #000; transform: translateY(-0.25em); }
+.price { font: 600 10pt/1 var(--font-display); font-variant-numeric: tabular-nums lining-nums; white-space: nowrap; flex: none; }
+.facts { display: flex; flex-wrap: wrap; gap: 0 8pt; margin: 0.5pt 0 0; font-size: 7.4pt; }
+.desc { margin: 0.5pt 0 0; font-size: 7.4pt; font-style: italic; }
+
+.sheet-foot { margin-top: 6pt; padding-top: 4pt; border-top: 0.75pt solid #000; font-size: 7.4pt; }
+.sheet-empty { padding: 20pt 0; font-size: 12pt; }

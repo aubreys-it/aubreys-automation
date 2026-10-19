@@ -1,0 +1,29 @@
+{
+    "name": "ds_ig_sftp_mi_exp",
+    "properties": {
+        "linkedServiceName": {
+            "referenceName": "ls_sftp_ig",
+            "type": "LinkedServiceReference"
+        },
+        "annotations": [],
+        "type": "Binary",
+        "parameters": {
+            "nn": {
+                "type": "string"
+            }
+        },
+        "typeProperties": {
+            "location": {
+                "type": "SftpLocation",
+                "folderPath": {
+                    "value": "@concat('Export/', dataset().nn)",
+                    "type": "Expression"
+                },
+                "fileName": "MI_Exp.txt"
+            }
+        },
+        "folder": {
+            "name": "infogenesis"
+        }
+    }
+}

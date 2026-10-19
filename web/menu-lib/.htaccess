@@ -1,0 +1,2 @@
+# menu-lib should live outside public_html. If it ever ends up inside, refuse direct access.
+Require all denied

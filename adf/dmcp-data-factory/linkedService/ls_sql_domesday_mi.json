@@ -1,0 +1,14 @@
+{
+    "name": "ls_sql_domesday_mi",
+    "properties": {
+        "type": "AzureSqlDatabase",
+        "annotations": [],
+        "typeProperties": {
+            "server": "mcp-alex.database.windows.net",
+            "database": "domesday",
+            "encrypt": "mandatory",
+            "trustServerCertificate": false,
+            "authenticationType": "SystemAssignedManagedIdentity"
+        }
+    }
+}

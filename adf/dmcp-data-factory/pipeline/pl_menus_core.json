@@ -1,0 +1,383 @@
+{
+    "name": "pl_menus_core",
+    "properties": {
+        "activities": [
+            {
+                "name": "Get stores",
+                "type": "Lookup",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.00:10:00",
+                    "retry": 1,
+                    "retryIntervalInSeconds": 30
+                },
+                "typeProperties": {
+                    "source": {
+                        "type": "AzureSqlSource",
+                        "sqlReaderStoredProcedureName": "menu.usp_stores_to_load",
+                        "storedProcedureParameters": {
+                            "onlyMissing": {
+                                "value": {
+                                    "value": "@pipeline().parameters.onlyMissing",
+                                    "type": "Expression"
+                                },
+                                "type": "Boolean"
+                            }
+                        },
+                        "queryTimeout": "00:10:00"
+                    },
+                    "dataset": {
+                        "referenceName": "ds_sql_domesday",
+                        "type": "DatasetReference"
+                    },
+                    "firstRowOnly": false
+                }
+            },
+            {
+                "name": "Ingest each store",
+                "type": "ForEach",
+                "dependsOn": [
+                    {
+                        "activity": "Get stores",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "typeProperties": {
+                    "items": {
+                        "value": "@activity('Get stores').output.value",
+                        "type": "Expression"
+                    },
+                    "isSequential": false,
+                    "batchCount": 6,
+                    "activities": [
+                        {
+                            "name": "Ingest store",
+                            "type": "ExecutePipeline",
+                            "dependsOn": [],
+                            "typeProperties": {
+                                "pipeline": {
+                                    "referenceName": "pl_menus_ingest_store",
+                                    "type": "PipelineReference"
+                                },
+                                "waitOnCompletion": true,
+                                "parameters": {
+                                    "runId": {
+                                        "value": "@pipeline().parameters.runId",
+                                        "type": "Expression"
+                                    },
+                                    "locId": {
+                                        "value": "@item().locId",
+                                        "type": "Expression"
+                                    },
+                                    "nn": {
+                                        "value": "@item().nn",
+                                        "type": "Expression"
+                                    },
+                                    "maxFileAgeHours": {
+                                        "value": "@pipeline().parameters.maxFileAgeHours",
+                                        "type": "Expression"
+                                    },
+                                    "rejectThresholdPct": {
+                                        "value": "@pipeline().parameters.rejectThresholdPct",
+                                        "type": "Expression"
+                                    },
+                                    "missingSeverity": {
+                                        "value": "@pipeline().parameters.missingSeverity",
+                                        "type": "Expression"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "Stage each table",
+                "type": "ForEach",
+                "dependsOn": [
+                    {
+                        "activity": "Ingest each store",
+                        "dependencyConditions": [
+                            "Completed"
+                        ]
+                    }
+                ],
+                "typeProperties": {
+                    "items": {
+                        "value": "@json('[{\"entity\": \"item\", \"table\": \"mi_item\"}, {\"entity\": \"price_level\", \"table\": \"mi_price_level\"}, {\"entity\": \"store_price_level\", \"table\": \"mi_store_price_level\"}, {\"entity\": \"sku_code\", \"table\": \"mi_sku_code\"}, {\"entity\": \"choice_group\", \"table\": \"mi_choice_group\"}, {\"entity\": \"kitchen_printer\", \"table\": \"mi_kitchen_printer\"}]')",
+                        "type": "Expression"
+                    },
+                    "isSequential": false,
+                    "batchCount": 6,
+                    "activities": [
+                        {
+                            "name": "Check parsed files",
+                            "type": "GetMetadata",
+                            "dependsOn": [],
+                            "typeProperties": {
+                                "dataset": {
+                                    "referenceName": "ds_datain_csv",
+                                    "type": "DatasetReference",
+                                    "parameters": {
+                                        "folderPath": {
+                                            "value": "@concat('menu_items/parsed/', @pipeline().parameters.runId, '/', item().entity)",
+                                            "type": "Expression"
+                                        }
+                                    }
+                                },
+                                "fieldList": [
+                                    "exists"
+                                ],
+                                "storeSettings": {
+                                    "type": "AzureBlobFSReadSettings",
+                                    "recursive": false
+                                },
+                                "formatSettings": {
+                                    "type": "DelimitedTextReadSettings"
+                                }
+                            }
+                        },
+                        {
+                            "name": "If any parsed",
+                            "type": "IfCondition",
+                            "dependsOn": [
+                                {
+                                    "activity": "Check parsed files",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "typeProperties": {
+                                "expression": {
+                                    "value": "@activity('Check parsed files').output.exists",
+                                    "type": "Expression"
+                                },
+                                "ifTrueActivities": [
+                                    {
+                                        "name": "Copy to staging",
+                                        "type": "Copy",
+                                        "dependsOn": [],
+                                        "policy": {
+                                            "timeout": "0.00:15:00",
+                                            "retry": 1,
+                                            "retryIntervalInSeconds": 30
+                                        },
+                                        "typeProperties": {
+                                            "source": {
+                                                "type": "DelimitedTextSource",
+                                                "storeSettings": {
+                                                    "type": "AzureBlobFSReadSettings",
+                                                    "recursive": false,
+                                                    "wildcardFolderPath": {
+                                                        "value": "@concat('menu_items/parsed/', @pipeline().parameters.runId, '/', item().entity)",
+                                                        "type": "Expression"
+                                                    },
+                                                    "wildcardFileName": "*.csv"
+                                                },
+                                                "formatSettings": {
+                                                    "type": "DelimitedTextReadSettings"
+                                                }
+                                            },
+                                            "sink": {
+                                                "type": "AzureSqlSink",
+                                                "preCopyScript": {
+                                                    "value": "@concat('DELETE FROM stg.', item().table, ';')",
+                                                    "type": "Expression"
+                                                },
+                                                "writeBehavior": "insert",
+                                                "sqlWriterUseTableLock": false,
+                                                "disableMetricsCollection": false
+                                            },
+                                            "enableStaging": false,
+                                            "translator": {
+                                                "type": "TabularTranslator",
+                                                "typeConversion": true,
+                                                "typeConversionSettings": {
+                                                    "allowDataTruncation": false,
+                                                    "treatBooleanAsNumber": false
+                                                }
+                                            }
+                                        },
+                                        "inputs": [
+                                            {
+                                                "referenceName": "ds_datain_csv",
+                                                "type": "DatasetReference",
+                                                "parameters": {
+                                                    "folderPath": {
+                                                        "value": "@concat('menu_items/parsed/', @pipeline().parameters.runId, '/', item().entity)",
+                                                        "type": "Expression"
+                                                    }
+                                                }
+                                            }
+                                        ],
+                                        "outputs": [
+                                            {
+                                                "referenceName": "ds_sql_stg_table",
+                                                "type": "DatasetReference",
+                                                "parameters": {
+                                                    "tableName": {
+                                                        "value": "@item().table",
+                                                        "type": "Expression"
+                                                    }
+                                                }
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "Merge into ig",
+                "type": "Lookup",
+                "dependsOn": [
+                    {
+                        "activity": "Stage each table",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.00:10:00",
+                    "retry": 1,
+                    "retryIntervalInSeconds": 30
+                },
+                "typeProperties": {
+                    "source": {
+                        "type": "AzureSqlSource",
+                        "sqlReaderStoredProcedureName": "ig.usp_mi_merge",
+                        "storedProcedureParameters": {
+                            "runId": {
+                                "value": {
+                                    "value": "@pipeline().parameters.runId",
+                                    "type": "Expression"
+                                },
+                                "type": "String"
+                            }
+                        },
+                        "queryTimeout": "00:10:00"
+                    },
+                    "dataset": {
+                        "referenceName": "ds_sql_domesday",
+                        "type": "DatasetReference"
+                    },
+                    "firstRowOnly": false
+                }
+            },
+            {
+                "name": "Check IG data quality",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [
+                    {
+                        "activity": "Merge into ig",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.00:10:00",
+                    "retry": 1,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "linkedServiceName": {
+                    "referenceName": "ls_sql_domesday_mi",
+                    "type": "LinkedServiceReference"
+                },
+                "typeProperties": {
+                    "storedProcedureName": "menu.usp_check_ig_quality",
+                    "storedProcedureParameters": {
+                        "runId": {
+                            "value": {
+                                "value": "@pipeline().parameters.runId",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        }
+                    }
+                }
+            },
+            {
+                "name": "Publish each store",
+                "type": "ForEach",
+                "dependsOn": [
+                    {
+                        "activity": "Check IG data quality",
+                        "dependencyConditions": [
+                            "Completed"
+                        ]
+                    }
+                ],
+                "typeProperties": {
+                    "items": {
+                        "value": "@activity('Get stores').output.value",
+                        "type": "Expression"
+                    },
+                    "isSequential": false,
+                    "batchCount": 6,
+                    "activities": [
+                        {
+                            "name": "Publish store",
+                            "type": "ExecutePipeline",
+                            "dependsOn": [],
+                            "typeProperties": {
+                                "pipeline": {
+                                    "referenceName": "pl_menus_publish_store",
+                                    "type": "PipelineReference"
+                                },
+                                "waitOnCompletion": true,
+                                "parameters": {
+                                    "runId": {
+                                        "value": "@pipeline().parameters.runId",
+                                        "type": "Expression"
+                                    },
+                                    "locId": {
+                                        "value": "@item().locId",
+                                        "type": "Expression"
+                                    },
+                                    "nn": {
+                                        "value": "@item().nn",
+                                        "type": "Expression"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        ],
+        "folder": {
+            "name": "menus"
+        },
+        "annotations": [],
+        "parameters": {
+            "runId": {
+                "type": "string"
+            },
+            "onlyMissing": {
+                "type": "bool",
+                "defaultValue": false
+            },
+            "maxFileAgeHours": {
+                "type": "int",
+                "defaultValue": 20
+            },
+            "rejectThresholdPct": {
+                "type": "float",
+                "defaultValue": 1.0
+            },
+            "missingSeverity": {
+                "type": "string",
+                "defaultValue": "ERROR"
+            }
+        }
+    }
+}

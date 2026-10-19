@@ -1,0 +1,37 @@
+{
+    "name": "tr_menus_daily_0730",
+    "properties": {
+        "description": "Daily menu load. A missing/stale IG file is only a WARN here because the 8:15 retry follows.",
+        "annotations": [],
+        "runtimeState": "Stopped",
+        "pipelines": [
+            {
+                "pipelineReference": {
+                    "referenceName": "pl_menus_daily",
+                    "type": "PipelineReference"
+                },
+                "parameters": {
+                    "onlyMissing": false,
+                    "missingSeverity": "WARN"
+                }
+            }
+        ],
+        "type": "ScheduleTrigger",
+        "typeProperties": {
+            "recurrence": {
+                "frequency": "Day",
+                "interval": 1,
+                "startTime": "2026-10-20T00:00:00",
+                "timeZone": "Eastern Standard Time",
+                "schedule": {
+                    "minutes": [
+                        30
+                    ],
+                    "hours": [
+                        7
+                    ]
+                }
+            }
+        }
+    }
+}

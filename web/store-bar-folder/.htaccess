@@ -1,0 +1,5 @@
+# Old links and QR codes keep working: index.html redirects to index.php.
+DirectoryIndex index.php index.html
+<Files "_store.php">
+  Require all denied
+</Files>

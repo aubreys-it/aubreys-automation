@@ -1,0 +1,19 @@
+/*
+  Starting point for a new concept. Copy this folder to themes/<themeCode>/ (themeCode comes
+  from menu.concept), change the colors, and add:
+    logo.png        light-on-dark logo for the phone menu (about 500 x 80, transparent background)
+    logo-print.png  black logo for printed menus (about 700 px wide, white or transparent background)
+  Without logos the store name is shown in the display font instead.
+*/
+:root {
+  --bg: #1d2321;
+  --surface: #27302d;
+  --ink: #f1efe8;
+  --ink-soft: #bdbab0;
+  --accent: #c9a24a;
+  --action: #c9a24a;
+  --action-ink: #1d2321;
+  --rule: rgba(241, 239, 232, 0.22);
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "Libre Franklin", Arial, sans-serif;
+}

@@ -1,0 +1,361 @@
+{
+    "name": "pl_menus_publish_store",
+    "properties": {
+        "activities": [
+            {
+                "name": "Build menu JSON",
+                "type": "Lookup",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.00:10:00",
+                    "retry": 1,
+                    "retryIntervalInSeconds": 30
+                },
+                "typeProperties": {
+                    "source": {
+                        "type": "AzureSqlSource",
+                        "sqlReaderStoredProcedureName": "menu.usp_publish_store",
+                        "storedProcedureParameters": {
+                            "locId": {
+                                "value": {
+                                    "value": "@pipeline().parameters.locId",
+                                    "type": "Expression"
+                                },
+                                "type": "Int32"
+                            },
+                            "runId": {
+                                "value": {
+                                    "value": "@pipeline().parameters.runId",
+                                    "type": "Expression"
+                                },
+                                "type": "String"
+                            }
+                        },
+                        "queryTimeout": "00:10:00"
+                    },
+                    "dataset": {
+                        "referenceName": "ds_sql_domesday",
+                        "type": "DatasetReference"
+                    },
+                    "firstRowOnly": true
+                }
+            },
+            {
+                "name": "If publishing",
+                "type": "IfCondition",
+                "dependsOn": [
+                    {
+                        "activity": "Build menu JSON",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "typeProperties": {
+                    "expression": {
+                        "value": "@bool(activity('Build menu JSON').output.firstRow.shouldPublish)",
+                        "type": "Expression"
+                    },
+                    "ifTrueActivities": [
+                        {
+                            "name": "Upload JSON",
+                            "type": "WebActivity",
+                            "dependsOn": [],
+                            "policy": {
+                                "timeout": "0.00:02:00",
+                                "retry": 2,
+                                "retryIntervalInSeconds": 30,
+                                "secureInput": false,
+                                "secureOutput": false
+                            },
+                            "typeProperties": {
+                                "method": "PUT",
+                                "url": {
+                                    "value": "@concat('https://aubwebpub.blob.core.windows.net/menus/', activity('Build menu JSON').output.firstRow.blobName)",
+                                    "type": "Expression"
+                                },
+                                "headers": {
+                                    "x-ms-blob-type": "BlockBlob",
+                                    "x-ms-version": "2023-11-03",
+                                    "Content-Type": "application/json; charset=utf-8",
+                                    "x-ms-blob-content-type": "application/json; charset=utf-8",
+                                    "x-ms-blob-cache-control": "public, max-age=300"
+                                },
+                                "body": {
+                                    "value": "@activity('Build menu JSON').output.firstRow.menuJson",
+                                    "type": "Expression"
+                                },
+                                "authentication": {
+                                    "type": "MSI",
+                                    "resource": "https://storage.azure.com/"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Record publish",
+                            "type": "SqlServerStoredProcedure",
+                            "dependsOn": [
+                                {
+                                    "activity": "Upload JSON",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.00:10:00",
+                                "retry": 1,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "linkedServiceName": {
+                                "referenceName": "ls_sql_domesday_mi",
+                                "type": "LinkedServiceReference"
+                            },
+                            "typeProperties": {
+                                "storedProcedureName": "ops.usp_record_arrival",
+                                "storedProcedureParameters": {
+                                    "runId": {
+                                        "value": {
+                                            "value": "@pipeline().parameters.runId",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "domainCode": {
+                                        "value": "menus",
+                                        "type": "String"
+                                    },
+                                    "feedCode": {
+                                        "value": "menu_json",
+                                        "type": "String"
+                                    },
+                                    "locId": {
+                                        "value": {
+                                            "value": "@pipeline().parameters.locId",
+                                            "type": "Expression"
+                                        },
+                                        "type": "Int32"
+                                    },
+                                    "rowCount": {
+                                        "value": {
+                                            "value": "@activity('Build menu JSON').output.firstRow.itemCount",
+                                            "type": "Expression"
+                                        },
+                                        "type": "Int32"
+                                    },
+                                    "sourcePath": {
+                                        "value": {
+                                            "value": "@concat('aubwebpub/menus/', activity('Build menu JSON').output.firstRow.blobName)",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Log published",
+                            "type": "SqlServerStoredProcedure",
+                            "dependsOn": [
+                                {
+                                    "activity": "Record publish",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.00:10:00",
+                                "retry": 1,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "linkedServiceName": {
+                                "referenceName": "ls_sql_domesday_mi",
+                                "type": "LinkedServiceReference"
+                            },
+                            "typeProperties": {
+                                "storedProcedureName": "ops.usp_log_event",
+                                "storedProcedureParameters": {
+                                    "runId": {
+                                        "value": {
+                                            "value": "@pipeline().parameters.runId",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "domainCode": {
+                                        "value": "menus",
+                                        "type": "String"
+                                    },
+                                    "code": {
+                                        "value": "MENU_PUBLISHED",
+                                        "type": "String"
+                                    },
+                                    "message": {
+                                        "value": {
+                                            "value": "@concat('Store ', @pipeline().parameters.nn, ': ', string(activity('Build menu JSON').output.firstRow.itemCount), ' items published')",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "locId": {
+                                        "value": {
+                                            "value": "@pipeline().parameters.locId",
+                                            "type": "Expression"
+                                        },
+                                        "type": "Int32"
+                                    },
+                                    "step": {
+                                        "value": "publish",
+                                        "type": "String"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Log upload failure",
+                            "type": "SqlServerStoredProcedure",
+                            "dependsOn": [
+                                {
+                                    "activity": "Upload JSON",
+                                    "dependencyConditions": [
+                                        "Failed"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.00:10:00",
+                                "retry": 1,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "linkedServiceName": {
+                                "referenceName": "ls_sql_domesday_mi",
+                                "type": "LinkedServiceReference"
+                            },
+                            "typeProperties": {
+                                "storedProcedureName": "ops.usp_log_event",
+                                "storedProcedureParameters": {
+                                    "runId": {
+                                        "value": {
+                                            "value": "@pipeline().parameters.runId",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "domainCode": {
+                                        "value": "menus",
+                                        "type": "String"
+                                    },
+                                    "code": {
+                                        "value": "PUBLISH_FAILED",
+                                        "type": "String"
+                                    },
+                                    "message": {
+                                        "value": {
+                                            "value": "@concat('Store ', @pipeline().parameters.nn, ': menu JSON upload failed: ', activity('Upload JSON').error.message)",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "locId": {
+                                        "value": {
+                                            "value": "@pipeline().parameters.locId",
+                                            "type": "Expression"
+                                        },
+                                        "type": "Int32"
+                                    },
+                                    "step": {
+                                        "value": "publish",
+                                        "type": "String"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "Log build failure",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [
+                    {
+                        "activity": "Build menu JSON",
+                        "dependencyConditions": [
+                            "Failed"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.00:10:00",
+                    "retry": 1,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "linkedServiceName": {
+                    "referenceName": "ls_sql_domesday_mi",
+                    "type": "LinkedServiceReference"
+                },
+                "typeProperties": {
+                    "storedProcedureName": "ops.usp_log_event",
+                    "storedProcedureParameters": {
+                        "runId": {
+                            "value": {
+                                "value": "@pipeline().parameters.runId",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "domainCode": {
+                            "value": "menus",
+                            "type": "String"
+                        },
+                        "code": {
+                            "value": "PUBLISH_FAILED",
+                            "type": "String"
+                        },
+                        "message": {
+                            "value": {
+                                "value": "@concat('Store ', @pipeline().parameters.nn, ': building the menu JSON failed: ', activity('Build menu JSON').error.message)",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "locId": {
+                            "value": {
+                                "value": "@pipeline().parameters.locId",
+                                "type": "Expression"
+                            },
+                            "type": "Int32"
+                        },
+                        "step": {
+                            "value": "publish",
+                            "type": "String"
+                        }
+                    }
+                }
+            }
+        ],
+        "folder": {
+            "name": "menus"
+        },
+        "annotations": [],
+        "parameters": {
+            "runId": {
+                "type": "string"
+            },
+            "locId": {
+                "type": "int"
+            },
+            "nn": {
+                "type": "string"
+            }
+        }
+    }
+}

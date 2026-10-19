@@ -1,0 +1,34 @@
+{
+    "name": "tr_ops_watchdog_0930",
+    "properties": {
+        "description": "Alerts on any expected feed that has not arrived (catches pipelines that never ran).",
+        "annotations": [],
+        "runtimeState": "Stopped",
+        "pipelines": [
+            {
+                "pipelineReference": {
+                    "referenceName": "pl_ops_watchdog",
+                    "type": "PipelineReference"
+                },
+                "parameters": {}
+            }
+        ],
+        "type": "ScheduleTrigger",
+        "typeProperties": {
+            "recurrence": {
+                "frequency": "Day",
+                "interval": 1,
+                "startTime": "2026-10-20T00:00:00",
+                "timeZone": "Eastern Standard Time",
+                "schedule": {
+                    "minutes": [
+                        30
+                    ],
+                    "hours": [
+                        9
+                    ]
+                }
+            }
+        }
+    }
+}

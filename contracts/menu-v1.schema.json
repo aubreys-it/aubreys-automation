@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aubreys.group/schemas/aubreys-menu/1",
+  "title": "Aubrey's store bar menu, version 1",
+  "description": "One file per store at menus/v1/<NN>.json. Produced by menu.usp_publish_store. Additive changes (new optional fields) keep version 1; anything that renames, removes or changes the meaning of a field goes to menus/v2/.",
+  "type": "object",
+  "required": ["schema", "store", "generatedAt", "contentChangedAt", "itemCount", "groups"],
+  "properties": {
+    "schema": { "const": "aubreys-menu/1" },
+    "store": {
+      "type": "object",
+      "required": ["locId", "code", "name", "concept", "theme"],
+      "properties": {
+        "locId": { "type": "integer" },
+        "code": { "type": "string", "pattern": "^[0-9]{2}$" },
+        "name": { "type": "string" },
+        "concept": { "type": "string" },
+        "theme": { "type": "string", "description": "PHP theme folder name" },
+        "homeUrl": { "type": ["string", "null"] }
+      }
+    },
+    "generatedAt": { "type": "string", "format": "date-time", "description": "UTC. When the pipeline last wrote this file. Used for the staleness check." },
+    "contentChangedAt": { "type": "string", "format": "date-time", "description": "UTC. When the menu content last actually changed. Shown to guests as 'Menu updated'." },
+    "sourceExportAt": { "type": ["string", "null"], "format": "date-time", "description": "UTC. Timestamp of the IG MI_Exp.txt this was built from." },
+    "itemCount": { "type": "integer", "minimum": 1 },
+    "groups": {
+      "type": "array",
+      "description": "In display order. Only groups with at least one item.",
+      "items": {
+        "type": "object",
+        "required": ["code", "name", "sections"],
+        "properties": {
+          "code": { "type": "string", "examples": ["beer", "liquor", "wine"] },
+          "name": { "type": "string" },
+          "sections": {
+            "type": "array",
+            "description": "In display order. Only sections with at least one item.",
+            "items": {
+              "type": "object",
+              "required": ["code", "name", "servings"],
+              "properties": {
+                "code": { "type": "string", "examples": ["draft_beer", "white_blush"] },
+                "name": { "type": "string" },
+                "servings": {
+                  "type": "array",
+                  "description": "Non-wine sections have one serving with code 'all' and name null. Wine sections have 'glass' then 'bottle'.",
+                  "items": {
+                    "type": "object",
+                    "required": ["code", "name", "items"],
+                    "properties": {
+                      "code": { "enum": ["all", "glass", "bottle"] },
+                      "name": { "type": ["string", "null"] },
+                      "items": {
+                        "type": "array",
+                        "description": "Sorted by name.",
+                        "items": {
+                          "type": "object",
+                          "required": ["id", "name", "price", "attributes"],
+                          "properties": {
+                            "id": { "type": "integer", "description": "IG item id" },
+                            "name": { "type": "string" },
+                            "price": { "type": ["number", "null"], "description": "Price level 1 (store override if present). null = no price in IG." },
+                            "attributes": {
+                              "type": "array",
+                              "description": "From IG SKU codes, in menu.attribute_type.sortRank order. Often empty.",
+                              "items": {
+                                "type": "object",
+                                "required": ["label", "value", "showLabel"],
+                                "properties": {
+                                  "label": { "type": "string" },
+                                  "value": { "type": "string" },
+                                  "showLabel": { "type": "boolean" }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

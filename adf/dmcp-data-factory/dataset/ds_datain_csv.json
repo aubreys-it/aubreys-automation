@@ -1,0 +1,37 @@
+{
+    "name": "ds_datain_csv",
+    "properties": {
+        "linkedServiceName": {
+            "referenceName": "AubDataInADLS",
+            "type": "LinkedServiceReference"
+        },
+        "annotations": [],
+        "type": "DelimitedText",
+        "schema": [],
+        "parameters": {
+            "folderPath": {
+                "type": "string"
+            }
+        },
+        "typeProperties": {
+            "location": {
+                "type": "AzureBlobFSLocation",
+                "fileSystem": "infogenesis",
+                "folderPath": {
+                    "value": "@dataset().folderPath",
+                    "type": "Expression"
+                }
+            },
+            "columnDelimiter": ",",
+            "rowDelimiter": "\r\n",
+            "encodingName": "UTF-8",
+            "escapeChar": "\"",
+            "quoteChar": "\"",
+            "firstRowAsHeader": true,
+            "nullValue": ""
+        },
+        "folder": {
+            "name": "infogenesis"
+        }
+    }
+}

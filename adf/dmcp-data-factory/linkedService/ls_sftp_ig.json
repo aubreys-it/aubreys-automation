@@ -1,0 +1,24 @@
+{
+    "name": "ls_sftp_ig",
+    "properties": {
+        "type": "Sftp",
+        "annotations": [],
+        "description": "InfoGenesis export SFTP (Agilysys hosted). Password in Key Vault; replaces the Basic-auth IgSftp once proven.",
+        "typeProperties": {
+            "host": "portal.ftp.infogenesisasp.com",
+            "port": 22,
+            "skipHostKeyValidation": false,
+            "hostKeyFingerprint": "ssh-ed25519 256 REPLACE-WITH-FINGERPRINT",
+            "authenticationType": "Basic",
+            "userName": "AUBR1.ftpadmin",
+            "password": {
+                "type": "AzureKeyVaultSecret",
+                "store": {
+                    "referenceName": "ls_kv_automation",
+                    "type": "LinkedServiceReference"
+                },
+                "secretName": "ig-sftp-password"
+            }
+        }
+    }
+}

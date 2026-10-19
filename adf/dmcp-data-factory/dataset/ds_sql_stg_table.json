@@ -1,0 +1,27 @@
+{
+    "name": "ds_sql_stg_table",
+    "properties": {
+        "linkedServiceName": {
+            "referenceName": "ls_sql_domesday_mi",
+            "type": "LinkedServiceReference"
+        },
+        "annotations": [],
+        "type": "AzureSqlTable",
+        "schema": [],
+        "parameters": {
+            "tableName": {
+                "type": "string"
+            }
+        },
+        "typeProperties": {
+            "schema": "stg",
+            "table": {
+                "value": "@dataset().tableName",
+                "type": "Expression"
+            }
+        },
+        "folder": {
+            "name": "domesday"
+        }
+    }
+}

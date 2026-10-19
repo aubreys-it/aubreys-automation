@@ -1,0 +1,13 @@
+/* Aubrey's: brand colors carried over from the original bar menu (styles.css / verify.css). */
+:root {
+  --bg: #212a34;            /* Aubrey's navy */
+  --surface: #2a3541;
+  --ink: #f3efd9;           /* Aubrey's cream */
+  --ink-soft: #c9c3a8;
+  --accent: #cd8031;        /* Aubrey's copper */
+  --action: #32adb7;        /* Aubrey's teal (age gate) */
+  --action-ink: #12191f;
+  --rule: rgba(243, 239, 217, 0.22);
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "Libre Franklin", "Franklin Gothic Medium", Arial, sans-serif;
+}

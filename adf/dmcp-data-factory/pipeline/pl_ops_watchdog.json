@@ -1,0 +1,340 @@
+{
+    "name": "pl_ops_watchdog",
+    "properties": {
+        "activities": [
+            {
+                "name": "Start run log",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.00:10:00",
+                    "retry": 1,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "linkedServiceName": {
+                    "referenceName": "ls_sql_domesday_mi",
+                    "type": "LinkedServiceReference"
+                },
+                "typeProperties": {
+                    "storedProcedureName": "ops.usp_run_start",
+                    "storedProcedureParameters": {
+                        "runId": {
+                            "value": {
+                                "value": "@pipeline().RunId",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "domainCode": {
+                            "value": "ops",
+                            "type": "String"
+                        },
+                        "pipelineName": {
+                            "value": {
+                                "value": "@pipeline().Pipeline",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "triggerName": {
+                            "value": {
+                                "value": "@pipeline().TriggerName",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "triggerType": {
+                            "value": {
+                                "value": "@pipeline().TriggerType",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        }
+                    }
+                }
+            },
+            {
+                "name": "Find late feeds",
+                "type": "Lookup",
+                "dependsOn": [
+                    {
+                        "activity": "Start run log",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.00:10:00",
+                    "retry": 1,
+                    "retryIntervalInSeconds": 30
+                },
+                "typeProperties": {
+                    "source": {
+                        "type": "AzureSqlSource",
+                        "sqlReaderStoredProcedureName": "ops.usp_watchdog",
+                        "storedProcedureParameters": {
+                            "runId": {
+                                "value": {
+                                    "value": "@pipeline().RunId",
+                                    "type": "Expression"
+                                },
+                                "type": "String"
+                            }
+                        },
+                        "queryTimeout": "00:10:00"
+                    },
+                    "dataset": {
+                        "referenceName": "ds_sql_domesday",
+                        "type": "DatasetReference"
+                    },
+                    "firstRowOnly": false
+                }
+            },
+            {
+                "name": "Alert each area",
+                "type": "ForEach",
+                "dependsOn": [
+                    {
+                        "activity": "Find late feeds",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "typeProperties": {
+                    "items": {
+                        "value": "@activity('Find late feeds').output.value",
+                        "type": "Expression"
+                    },
+                    "isSequential": true,
+                    "activities": [
+                        {
+                            "name": "Get Slack webhook",
+                            "type": "WebActivity",
+                            "dependsOn": [],
+                            "policy": {
+                                "timeout": "0.00:02:00",
+                                "retry": 2,
+                                "retryIntervalInSeconds": 30,
+                                "secureInput": false,
+                                "secureOutput": true
+                            },
+                            "typeProperties": {
+                                "method": "GET",
+                                "url": {
+                                    "value": "@concat('https://kv-aub-automation.vault.azure.net/secrets/', item().slackSecretName, '?api-version=7.4')",
+                                    "type": "Expression"
+                                },
+                                "authentication": {
+                                    "type": "MSI",
+                                    "resource": "https://vault.azure.net"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Post to Slack",
+                            "type": "WebActivity",
+                            "dependsOn": [
+                                {
+                                    "activity": "Get Slack webhook",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.00:02:00",
+                                "retry": 2,
+                                "retryIntervalInSeconds": 30,
+                                "secureInput": true,
+                                "secureOutput": false
+                            },
+                            "typeProperties": {
+                                "method": "POST",
+                                "url": {
+                                    "value": "@activity('Get Slack webhook').output.value",
+                                    "type": "Expression"
+                                },
+                                "headers": {
+                                    "Content-Type": "application/json"
+                                },
+                                "body": {
+                                    "value": "@json(item().slackBody)",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Send email",
+                            "type": "WebActivity",
+                            "dependsOn": [],
+                            "policy": {
+                                "timeout": "0.00:02:00",
+                                "retry": 2,
+                                "retryIntervalInSeconds": 30,
+                                "secureInput": false,
+                                "secureOutput": false
+                            },
+                            "typeProperties": {
+                                "method": "POST",
+                                "url": "https://graph.microsoft.com/v1.0/users/automation@aubreys.group/sendMail",
+                                "headers": {
+                                    "Content-Type": "application/json"
+                                },
+                                "body": {
+                                    "value": "@json(item().graphBody)",
+                                    "type": "Expression"
+                                },
+                                "authentication": {
+                                    "type": "MSI",
+                                    "resource": "https://graph.microsoft.com"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Log email",
+                            "type": "SqlServerStoredProcedure",
+                            "dependsOn": [
+                                {
+                                    "activity": "Send email",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.00:10:00",
+                                "retry": 1,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "linkedServiceName": {
+                                "referenceName": "ls_sql_domesday_mi",
+                                "type": "LinkedServiceReference"
+                            },
+                            "typeProperties": {
+                                "storedProcedureName": "ops.usp_log_notification",
+                                "storedProcedureParameters": {
+                                    "runId": {
+                                        "value": {
+                                            "value": "@pipeline().RunId",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "domainCode": {
+                                        "value": "ops",
+                                        "type": "String"
+                                    },
+                                    "channel": {
+                                        "value": "email",
+                                        "type": "String"
+                                    },
+                                    "kind": {
+                                        "value": "watchdog",
+                                        "type": "String"
+                                    },
+                                    "status": {
+                                        "value": "sent",
+                                        "type": "String"
+                                    },
+                                    "recipient": {
+                                        "value": {
+                                            "value": "@item().emailTo",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "subject": {
+                                        "value": {
+                                            "value": "@item().subject",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "Purge old log rows",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [
+                    {
+                        "activity": "Alert each area",
+                        "dependencyConditions": [
+                            "Completed"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.00:10:00",
+                    "retry": 1,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "linkedServiceName": {
+                    "referenceName": "ls_sql_domesday_mi",
+                    "type": "LinkedServiceReference"
+                },
+                "typeProperties": {
+                    "storedProcedureName": "ops.usp_purge",
+                    "storedProcedureParameters": {}
+                }
+            },
+            {
+                "name": "End run log",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [
+                    {
+                        "activity": "Purge old log rows",
+                        "dependencyConditions": [
+                            "Completed"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.00:10:00",
+                    "retry": 1,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "linkedServiceName": {
+                    "referenceName": "ls_sql_domesday_mi",
+                    "type": "LinkedServiceReference"
+                },
+                "typeProperties": {
+                    "storedProcedureName": "ops.usp_run_end",
+                    "storedProcedureParameters": {
+                        "runId": {
+                            "value": {
+                                "value": "@pipeline().RunId",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "failureMessage": {
+                            "value": {
+                                "value": "@coalesce(activity('Alert each area')?.error?.message, '')",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        }
+                    }
+                }
+            }
+        ],
+        "folder": {
+            "name": "ops"
+        },
+        "annotations": []
+    }
+}

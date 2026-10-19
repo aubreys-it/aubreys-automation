@@ -1,0 +1,628 @@
+{
+    "name": "pl_menus_ingest_store",
+    "properties": {
+        "activities": [
+            {
+                "name": "Set raw folder",
+                "type": "SetVariable",
+                "dependsOn": [],
+                "typeProperties": {
+                    "variableName": "rawFolder",
+                    "value": {
+                        "value": "@concat('menu_items/raw/', formatDateTime(utcNow(), 'yyyy/MM/dd'))",
+                        "type": "Expression"
+                    }
+                }
+            },
+            {
+                "name": "Check IG file",
+                "type": "GetMetadata",
+                "dependsOn": [
+                    {
+                        "activity": "Set raw folder",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.00:02:00",
+                    "retry": 2,
+                    "retryIntervalInSeconds": 60
+                },
+                "typeProperties": {
+                    "dataset": {
+                        "referenceName": "ds_ig_sftp_mi_exp",
+                        "type": "DatasetReference",
+                        "parameters": {
+                            "nn": {
+                                "value": "@pipeline().parameters.nn",
+                                "type": "Expression"
+                            }
+                        }
+                    },
+                    "fieldList": [
+                        "exists",
+                        "lastModified",
+                        "size"
+                    ],
+                    "storeSettings": {
+                        "type": "SftpReadSettings",
+                        "recursive": false
+                    },
+                    "formatSettings": {
+                        "type": "BinaryReadSettings"
+                    }
+                }
+            },
+            {
+                "name": "File state",
+                "type": "Switch",
+                "dependsOn": [
+                    {
+                        "activity": "Check IG file",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "typeProperties": {
+                    "on": {
+                        "value": "@if(not(activity('Check IG file').output.exists), 'missing', if(less(ticks(coalesce(activity('Check IG file').output?.lastModified, utcNow())), ticks(addHours(utcNow(), mul(-1, pipeline().parameters.maxFileAgeHours)))), 'stale', 'ok'))",
+                        "type": "Expression"
+                    },
+                    "cases": [
+                        {
+                            "value": "missing",
+                            "activities": [
+                                {
+                                    "name": "Log missing file",
+                                    "type": "SqlServerStoredProcedure",
+                                    "dependsOn": [],
+                                    "policy": {
+                                        "timeout": "0.00:10:00",
+                                        "retry": 1,
+                                        "retryIntervalInSeconds": 30,
+                                        "secureOutput": false,
+                                        "secureInput": false
+                                    },
+                                    "linkedServiceName": {
+                                        "referenceName": "ls_sql_domesday_mi",
+                                        "type": "LinkedServiceReference"
+                                    },
+                                    "typeProperties": {
+                                        "storedProcedureName": "ops.usp_log_event",
+                                        "storedProcedureParameters": {
+                                            "runId": {
+                                                "value": {
+                                                    "value": "@pipeline().parameters.runId",
+                                                    "type": "Expression"
+                                                },
+                                                "type": "String"
+                                            },
+                                            "domainCode": {
+                                                "value": "menus",
+                                                "type": "String"
+                                            },
+                                            "code": {
+                                                "value": "FILE_MISSING",
+                                                "type": "String"
+                                            },
+                                            "message": {
+                                                "value": {
+                                                    "value": "@concat('Store ', @pipeline().parameters.nn, ': no MI_Exp.txt in /Export/', @pipeline().parameters.nn, ' on the IG SFTP')",
+                                                    "type": "Expression"
+                                                },
+                                                "type": "String"
+                                            },
+                                            "locId": {
+                                                "value": {
+                                                    "value": "@pipeline().parameters.locId",
+                                                    "type": "Expression"
+                                                },
+                                                "type": "Int32"
+                                            },
+                                            "severity": {
+                                                "value": {
+                                                    "value": "@pipeline().parameters.missingSeverity",
+                                                    "type": "Expression"
+                                                },
+                                                "type": "String"
+                                            },
+                                            "step": {
+                                                "value": "ingest",
+                                                "type": "String"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "value": "stale",
+                            "activities": [
+                                {
+                                    "name": "Log stale file",
+                                    "type": "SqlServerStoredProcedure",
+                                    "dependsOn": [],
+                                    "policy": {
+                                        "timeout": "0.00:10:00",
+                                        "retry": 1,
+                                        "retryIntervalInSeconds": 30,
+                                        "secureOutput": false,
+                                        "secureInput": false
+                                    },
+                                    "linkedServiceName": {
+                                        "referenceName": "ls_sql_domesday_mi",
+                                        "type": "LinkedServiceReference"
+                                    },
+                                    "typeProperties": {
+                                        "storedProcedureName": "ops.usp_log_event",
+                                        "storedProcedureParameters": {
+                                            "runId": {
+                                                "value": {
+                                                    "value": "@pipeline().parameters.runId",
+                                                    "type": "Expression"
+                                                },
+                                                "type": "String"
+                                            },
+                                            "domainCode": {
+                                                "value": "menus",
+                                                "type": "String"
+                                            },
+                                            "code": {
+                                                "value": "FILE_STALE",
+                                                "type": "String"
+                                            },
+                                            "message": {
+                                                "value": {
+                                                    "value": "@concat('Store ', @pipeline().parameters.nn, ': MI_Exp.txt was last updated ', activity('Check IG file').output.lastModified, ' UTC')",
+                                                    "type": "Expression"
+                                                },
+                                                "type": "String"
+                                            },
+                                            "locId": {
+                                                "value": {
+                                                    "value": "@pipeline().parameters.locId",
+                                                    "type": "Expression"
+                                                },
+                                                "type": "Int32"
+                                            },
+                                            "severity": {
+                                                "value": {
+                                                    "value": "@pipeline().parameters.missingSeverity",
+                                                    "type": "Expression"
+                                                },
+                                                "type": "String"
+                                            },
+                                            "step": {
+                                                "value": "ingest",
+                                                "type": "String"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "value": "ok",
+                            "activities": [
+                                {
+                                    "name": "Copy raw file",
+                                    "type": "Copy",
+                                    "dependsOn": [],
+                                    "policy": {
+                                        "timeout": "0.00:10:00",
+                                        "retry": 2,
+                                        "retryIntervalInSeconds": 60
+                                    },
+                                    "typeProperties": {
+                                        "source": {
+                                            "type": "BinarySource",
+                                            "storeSettings": {
+                                                "type": "SftpReadSettings",
+                                                "recursive": false,
+                                                "disableChunking": false
+                                            }
+                                        },
+                                        "sink": {
+                                            "type": "BinarySink",
+                                            "storeSettings": {
+                                                "type": "AzureBlobFSWriteSettings"
+                                            }
+                                        }
+                                    },
+                                    "inputs": [
+                                        {
+                                            "referenceName": "ds_ig_sftp_mi_exp",
+                                            "type": "DatasetReference",
+                                            "parameters": {
+                                                "nn": {
+                                                    "value": "@pipeline().parameters.nn",
+                                                    "type": "Expression"
+                                                }
+                                            }
+                                        }
+                                    ],
+                                    "outputs": [
+                                        {
+                                            "referenceName": "ds_datain_binary",
+                                            "type": "DatasetReference",
+                                            "parameters": {
+                                                "folderPath": {
+                                                    "value": "@variables('rawFolder')",
+                                                    "type": "Expression"
+                                                },
+                                                "fileName": {
+                                                    "value": "@concat(@pipeline().parameters.nn, '_MI_Exp.txt')",
+                                                    "type": "Expression"
+                                                }
+                                            }
+                                        }
+                                    ]
+                                },
+                                {
+                                    "name": "Record arrival",
+                                    "type": "SqlServerStoredProcedure",
+                                    "dependsOn": [
+                                        {
+                                            "activity": "Copy raw file",
+                                            "dependencyConditions": [
+                                                "Succeeded"
+                                            ]
+                                        }
+                                    ],
+                                    "policy": {
+                                        "timeout": "0.00:10:00",
+                                        "retry": 1,
+                                        "retryIntervalInSeconds": 30,
+                                        "secureOutput": false,
+                                        "secureInput": false
+                                    },
+                                    "linkedServiceName": {
+                                        "referenceName": "ls_sql_domesday_mi",
+                                        "type": "LinkedServiceReference"
+                                    },
+                                    "typeProperties": {
+                                        "storedProcedureName": "ops.usp_record_arrival",
+                                        "storedProcedureParameters": {
+                                            "runId": {
+                                                "value": {
+                                                    "value": "@pipeline().parameters.runId",
+                                                    "type": "Expression"
+                                                },
+                                                "type": "String"
+                                            },
+                                            "domainCode": {
+                                                "value": "menus",
+                                                "type": "String"
+                                            },
+                                            "feedCode": {
+                                                "value": "MI_Exp",
+                                                "type": "String"
+                                            },
+                                            "locId": {
+                                                "value": {
+                                                    "value": "@pipeline().parameters.locId",
+                                                    "type": "Expression"
+                                                },
+                                                "type": "Int32"
+                                            },
+                                            "sourceModifiedUtc": {
+                                                "value": {
+                                                    "value": "@activity('Check IG file').output.lastModified",
+                                                    "type": "Expression"
+                                                },
+                                                "type": "DateTime"
+                                            },
+                                            "sourcePath": {
+                                                "value": {
+                                                    "value": "@concat('infogenesis/', variables('rawFolder'), '/', @pipeline().parameters.nn, '_MI_Exp.txt')",
+                                                    "type": "Expression"
+                                                },
+                                                "type": "String"
+                                            }
+                                        }
+                                    }
+                                },
+                                {
+                                    "name": "Parse file",
+                                    "type": "AzureFunctionActivity",
+                                    "dependsOn": [
+                                        {
+                                            "activity": "Record arrival",
+                                            "dependencyConditions": [
+                                                "Succeeded"
+                                            ]
+                                        }
+                                    ],
+                                    "policy": {
+                                        "timeout": "0.00:05:00",
+                                        "retry": 1,
+                                        "retryIntervalInSeconds": 30
+                                    },
+                                    "linkedServiceName": {
+                                        "referenceName": "ls_fn_ig_etl",
+                                        "type": "LinkedServiceReference"
+                                    },
+                                    "typeProperties": {
+                                        "functionName": "mi-export/parse",
+                                        "method": "POST",
+                                        "body": {
+                                            "value": "@json(concat('{\"runId\":\"', pipeline().parameters.runId, '\",\"storageAccount\":\"aubdatain\",\"container\":\"infogenesis\",\"rawBlob\":\"', variables('rawFolder'), '/', pipeline().parameters.nn, '_MI_Exp.txt', '\",\"outputPrefix\":\"menu_items/parsed/', pipeline().parameters.runId, '\",\"locId\":', string(pipeline().parameters.locId), ',\"rejectThresholdPct\":', string(pipeline().parameters.rejectThresholdPct), '}'))",
+                                            "type": "Expression"
+                                        }
+                                    }
+                                },
+                                {
+                                    "name": "Log parse result",
+                                    "type": "SqlServerStoredProcedure",
+                                    "dependsOn": [
+                                        {
+                                            "activity": "Parse file",
+                                            "dependencyConditions": [
+                                                "Succeeded"
+                                            ]
+                                        }
+                                    ],
+                                    "policy": {
+                                        "timeout": "0.00:10:00",
+                                        "retry": 1,
+                                        "retryIntervalInSeconds": 30,
+                                        "secureOutput": false,
+                                        "secureInput": false
+                                    },
+                                    "linkedServiceName": {
+                                        "referenceName": "ls_sql_domesday_mi",
+                                        "type": "LinkedServiceReference"
+                                    },
+                                    "typeProperties": {
+                                        "storedProcedureName": "ig.usp_log_parse_result",
+                                        "storedProcedureParameters": {
+                                            "runId": {
+                                                "value": {
+                                                    "value": "@pipeline().parameters.runId",
+                                                    "type": "Expression"
+                                                },
+                                                "type": "String"
+                                            },
+                                            "locId": {
+                                                "value": {
+                                                    "value": "@pipeline().parameters.locId",
+                                                    "type": "Expression"
+                                                },
+                                                "type": "Int32"
+                                            },
+                                            "result": {
+                                                "value": {
+                                                    "value": "@string(activity('Parse file').output)",
+                                                    "type": "Expression"
+                                                },
+                                                "type": "String"
+                                            }
+                                        }
+                                    }
+                                },
+                                {
+                                    "name": "Log copy failure",
+                                    "type": "SqlServerStoredProcedure",
+                                    "dependsOn": [
+                                        {
+                                            "activity": "Copy raw file",
+                                            "dependencyConditions": [
+                                                "Failed"
+                                            ]
+                                        }
+                                    ],
+                                    "policy": {
+                                        "timeout": "0.00:10:00",
+                                        "retry": 1,
+                                        "retryIntervalInSeconds": 30,
+                                        "secureOutput": false,
+                                        "secureInput": false
+                                    },
+                                    "linkedServiceName": {
+                                        "referenceName": "ls_sql_domesday_mi",
+                                        "type": "LinkedServiceReference"
+                                    },
+                                    "typeProperties": {
+                                        "storedProcedureName": "ops.usp_log_event",
+                                        "storedProcedureParameters": {
+                                            "runId": {
+                                                "value": {
+                                                    "value": "@pipeline().parameters.runId",
+                                                    "type": "Expression"
+                                                },
+                                                "type": "String"
+                                            },
+                                            "domainCode": {
+                                                "value": "menus",
+                                                "type": "String"
+                                            },
+                                            "code": {
+                                                "value": "LOAD_FAILED",
+                                                "type": "String"
+                                            },
+                                            "message": {
+                                                "value": {
+                                                    "value": "@concat('Store ', @pipeline().parameters.nn, ': could not copy MI_Exp.txt from IG SFTP: ', activity('Copy raw file').error.message)",
+                                                    "type": "Expression"
+                                                },
+                                                "type": "String"
+                                            },
+                                            "locId": {
+                                                "value": {
+                                                    "value": "@pipeline().parameters.locId",
+                                                    "type": "Expression"
+                                                },
+                                                "type": "Int32"
+                                            },
+                                            "step": {
+                                                "value": "ingest",
+                                                "type": "String"
+                                            }
+                                        }
+                                    }
+                                },
+                                {
+                                    "name": "Log parser failure",
+                                    "type": "SqlServerStoredProcedure",
+                                    "dependsOn": [
+                                        {
+                                            "activity": "Parse file",
+                                            "dependencyConditions": [
+                                                "Failed"
+                                            ]
+                                        }
+                                    ],
+                                    "policy": {
+                                        "timeout": "0.00:10:00",
+                                        "retry": 1,
+                                        "retryIntervalInSeconds": 30,
+                                        "secureOutput": false,
+                                        "secureInput": false
+                                    },
+                                    "linkedServiceName": {
+                                        "referenceName": "ls_sql_domesday_mi",
+                                        "type": "LinkedServiceReference"
+                                    },
+                                    "typeProperties": {
+                                        "storedProcedureName": "ops.usp_log_event",
+                                        "storedProcedureParameters": {
+                                            "runId": {
+                                                "value": {
+                                                    "value": "@pipeline().parameters.runId",
+                                                    "type": "Expression"
+                                                },
+                                                "type": "String"
+                                            },
+                                            "domainCode": {
+                                                "value": "menus",
+                                                "type": "String"
+                                            },
+                                            "code": {
+                                                "value": "PARSE_FAILED",
+                                                "type": "String"
+                                            },
+                                            "message": {
+                                                "value": {
+                                                    "value": "@concat('Store ', @pipeline().parameters.nn, ': parser function call failed: ', activity('Parse file').error.message)",
+                                                    "type": "Expression"
+                                                },
+                                                "type": "String"
+                                            },
+                                            "locId": {
+                                                "value": {
+                                                    "value": "@pipeline().parameters.locId",
+                                                    "type": "Expression"
+                                                },
+                                                "type": "Int32"
+                                            },
+                                            "step": {
+                                                "value": "parse",
+                                                "type": "String"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "Log SFTP failure",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [
+                    {
+                        "activity": "Check IG file",
+                        "dependencyConditions": [
+                            "Failed"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.00:10:00",
+                    "retry": 1,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "linkedServiceName": {
+                    "referenceName": "ls_sql_domesday_mi",
+                    "type": "LinkedServiceReference"
+                },
+                "typeProperties": {
+                    "storedProcedureName": "ops.usp_log_event",
+                    "storedProcedureParameters": {
+                        "runId": {
+                            "value": {
+                                "value": "@pipeline().parameters.runId",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "domainCode": {
+                            "value": "menus",
+                            "type": "String"
+                        },
+                        "code": {
+                            "value": "LOAD_FAILED",
+                            "type": "String"
+                        },
+                        "message": {
+                            "value": {
+                                "value": "@concat('Store ', @pipeline().parameters.nn, ': could not reach the IG SFTP: ', activity('Check IG file').error.message)",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "locId": {
+                            "value": {
+                                "value": "@pipeline().parameters.locId",
+                                "type": "Expression"
+                            },
+                            "type": "Int32"
+                        },
+                        "step": {
+                            "value": "ingest",
+                            "type": "String"
+                        }
+                    }
+                }
+            }
+        ],
+        "folder": {
+            "name": "menus"
+        },
+        "annotations": [],
+        "parameters": {
+            "runId": {
+                "type": "string"
+            },
+            "locId": {
+                "type": "int"
+            },
+            "nn": {
+                "type": "string"
+            },
+            "maxFileAgeHours": {
+                "type": "int",
+                "defaultValue": 20
+            },
+            "rejectThresholdPct": {
+                "type": "float",
+                "defaultValue": 1.0
+            },
+            "missingSeverity": {
+                "type": "string",
+                "defaultValue": "ERROR"
+            }
+        },
+        "variables": {
+            "rawFolder": {
+                "type": "String"
+            }
+        }
+    }
+}

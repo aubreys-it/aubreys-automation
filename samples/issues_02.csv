@@ -1,0 +1,17 @@
+code,store,itemId,itemName,productClassId,info
+IG_SERVING_MISMATCH,02,738,G Gundlach Bundschu Mountain Cuvee(1),22,"name says glass, class 22 is bottle"
+IG_NAME_SUFFIX,02,738,G Gundlach Bundschu Mountain Cuvee(1),22,"shows on the web as ""Gundlach Bundschu Mountain Cuvee"""
+IG_NO_PRICE,02,4030003,B Rey Azul,55,no price level 1 (or $0.00)
+IG_REVCAT_MISMATCH,02,4030052,Truly Wildberry,54,"class 54 expects revenue category 2, item has 4"
+IG_NAME_SUFFIX,02,4040019,Malibu Watermelon.,28,"shows on the web as ""Malibu Watermelon"""
+IG_NAME_SUFFIX,02,4040022,Ron Zacapa.,28,"shows on the web as ""Ron Zacapa"""
+IG_NAME_SUFFIX,02,4060021,Don Julio 70.,30,"shows on the web as ""Don Julio 70"""
+IG_NO_PRICE,02,4060031,Insolito Anejo,30,no price level 1 (or $0.00)
+IG_NAME_SUFFIX,02,4080019,Belle Meade.,32,"shows on the web as ""Belle Meade"""
+IG_NO_PRICE,02,4080023,Benchmark Top Floor,32,no price level 1 (or $0.00)
+IG_NO_PRICE,02,4080112,Evan Williams Single Barrel,32,no price level 1 (or $0.00)
+IG_NAME_SUFFIX,02,4080214,Pappy Van Winkle 23 Year.,32,"shows on the web as ""Pappy Van Winkle 23 Year"""
+IG_NAME_SUFFIX,02,4080324,Calumet 15 Year.,32,"shows on the web as ""Calumet 15 Year"""
+IG_NAME_SUFFIX,02,4080330,Pappy Van Winkle 20 Year.,32,"shows on the web as ""Pappy Van Winkle 20 Year"""
+IG_DUPLICATE_NAME,02,737,Gundlach Bundschu Mountain Cuvee,,"""Gundlach Bundschu Mountain Cuvee"" appears 2 times in red"
+IG_DUPLICATE_NAME,02,738,Gundlach Bundschu Mountain Cuvee,,"""Gundlach Bundschu Mountain Cuvee"" appears 2 times in red"

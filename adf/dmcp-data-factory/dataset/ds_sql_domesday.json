@@ -1,0 +1,16 @@
+{
+    "name": "ds_sql_domesday",
+    "properties": {
+        "linkedServiceName": {
+            "referenceName": "ls_sql_domesday_mi",
+            "type": "LinkedServiceReference"
+        },
+        "annotations": [],
+        "type": "AzureSqlTable",
+        "schema": [],
+        "typeProperties": {},
+        "folder": {
+            "name": "domesday"
+        }
+    }
+}

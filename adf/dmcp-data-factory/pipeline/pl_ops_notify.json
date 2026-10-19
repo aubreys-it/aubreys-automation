@@ -1,0 +1,913 @@
+{
+    "name": "pl_ops_notify",
+    "properties": {
+        "activities": [
+            {
+                "name": "Get payloads",
+                "type": "Lookup",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.00:10:00",
+                    "retry": 1,
+                    "retryIntervalInSeconds": 30
+                },
+                "typeProperties": {
+                    "source": {
+                        "type": "AzureSqlSource",
+                        "sqlReaderStoredProcedureName": "ops.usp_run_notifications",
+                        "storedProcedureParameters": {
+                            "runId": {
+                                "value": {
+                                    "value": "@pipeline().parameters.runId",
+                                    "type": "Expression"
+                                },
+                                "type": "String"
+                            }
+                        },
+                        "queryTimeout": "00:10:00"
+                    },
+                    "dataset": {
+                        "referenceName": "ds_sql_domesday",
+                        "type": "DatasetReference"
+                    },
+                    "firstRowOnly": true
+                }
+            },
+            {
+                "name": "If alert",
+                "type": "IfCondition",
+                "dependsOn": [
+                    {
+                        "activity": "Get payloads",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "typeProperties": {
+                    "expression": {
+                        "value": "@bool(activity('Get payloads').output.firstRow.sendAlert)",
+                        "type": "Expression"
+                    },
+                    "ifTrueActivities": [
+                        {
+                            "name": "Get Slack webhook - alert",
+                            "type": "WebActivity",
+                            "dependsOn": [],
+                            "policy": {
+                                "timeout": "0.00:02:00",
+                                "retry": 2,
+                                "retryIntervalInSeconds": 30,
+                                "secureInput": false,
+                                "secureOutput": true
+                            },
+                            "typeProperties": {
+                                "method": "GET",
+                                "url": {
+                                    "value": "@concat('https://kv-aub-automation.vault.azure.net/secrets/', activity('Get payloads').output.firstRow.slackSecretName, '?api-version=7.4')",
+                                    "type": "Expression"
+                                },
+                                "authentication": {
+                                    "type": "MSI",
+                                    "resource": "https://vault.azure.net"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Post to Slack - alert",
+                            "type": "WebActivity",
+                            "dependsOn": [
+                                {
+                                    "activity": "Get Slack webhook - alert",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.00:02:00",
+                                "retry": 2,
+                                "retryIntervalInSeconds": 30,
+                                "secureInput": true,
+                                "secureOutput": false
+                            },
+                            "typeProperties": {
+                                "method": "POST",
+                                "url": {
+                                    "value": "@activity('Get Slack webhook - alert').output.value",
+                                    "type": "Expression"
+                                },
+                                "headers": {
+                                    "Content-Type": "application/json"
+                                },
+                                "body": {
+                                    "value": "@json(activity('Get payloads').output.firstRow.slackAlertBody)",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Send email - alert",
+                            "type": "WebActivity",
+                            "dependsOn": [],
+                            "policy": {
+                                "timeout": "0.00:02:00",
+                                "retry": 2,
+                                "retryIntervalInSeconds": 30,
+                                "secureInput": false,
+                                "secureOutput": false
+                            },
+                            "typeProperties": {
+                                "method": "POST",
+                                "url": "https://graph.microsoft.com/v1.0/users/automation@aubreys.group/sendMail",
+                                "headers": {
+                                    "Content-Type": "application/json"
+                                },
+                                "body": {
+                                    "value": "@json(activity('Get payloads').output.firstRow.graphAlertBody)",
+                                    "type": "Expression"
+                                },
+                                "authentication": {
+                                    "type": "MSI",
+                                    "resource": "https://graph.microsoft.com"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Log slack sent - alert",
+                            "type": "SqlServerStoredProcedure",
+                            "dependsOn": [
+                                {
+                                    "activity": "Post to Slack - alert",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.00:10:00",
+                                "retry": 1,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "linkedServiceName": {
+                                "referenceName": "ls_sql_domesday_mi",
+                                "type": "LinkedServiceReference"
+                            },
+                            "typeProperties": {
+                                "storedProcedureName": "ops.usp_log_notification",
+                                "storedProcedureParameters": {
+                                    "runId": {
+                                        "value": {
+                                            "value": "@pipeline().parameters.runId",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "domainCode": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.domainCode",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "channel": {
+                                        "value": "slack",
+                                        "type": "String"
+                                    },
+                                    "kind": {
+                                        "value": "alert",
+                                        "type": "String"
+                                    },
+                                    "status": {
+                                        "value": "sent",
+                                        "type": "String"
+                                    },
+                                    "recipient": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.areaCode",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "subject": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.alertSubject",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Log slack failed - alert",
+                            "type": "SqlServerStoredProcedure",
+                            "dependsOn": [
+                                {
+                                    "activity": "Post to Slack - alert",
+                                    "dependencyConditions": [
+                                        "Failed"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.00:10:00",
+                                "retry": 1,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "linkedServiceName": {
+                                "referenceName": "ls_sql_domesday_mi",
+                                "type": "LinkedServiceReference"
+                            },
+                            "typeProperties": {
+                                "storedProcedureName": "ops.usp_log_notification",
+                                "storedProcedureParameters": {
+                                    "runId": {
+                                        "value": {
+                                            "value": "@pipeline().parameters.runId",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "domainCode": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.domainCode",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "channel": {
+                                        "value": "slack",
+                                        "type": "String"
+                                    },
+                                    "kind": {
+                                        "value": "alert",
+                                        "type": "String"
+                                    },
+                                    "status": {
+                                        "value": "failed",
+                                        "type": "String"
+                                    },
+                                    "recipient": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.areaCode",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "subject": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.alertSubject",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Log email sent - alert",
+                            "type": "SqlServerStoredProcedure",
+                            "dependsOn": [
+                                {
+                                    "activity": "Send email - alert",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.00:10:00",
+                                "retry": 1,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "linkedServiceName": {
+                                "referenceName": "ls_sql_domesday_mi",
+                                "type": "LinkedServiceReference"
+                            },
+                            "typeProperties": {
+                                "storedProcedureName": "ops.usp_log_notification",
+                                "storedProcedureParameters": {
+                                    "runId": {
+                                        "value": {
+                                            "value": "@pipeline().parameters.runId",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "domainCode": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.domainCode",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "channel": {
+                                        "value": "email",
+                                        "type": "String"
+                                    },
+                                    "kind": {
+                                        "value": "alert",
+                                        "type": "String"
+                                    },
+                                    "status": {
+                                        "value": "sent",
+                                        "type": "String"
+                                    },
+                                    "recipient": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.emailTo",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "subject": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.alertSubject",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Log email failed - alert",
+                            "type": "SqlServerStoredProcedure",
+                            "dependsOn": [
+                                {
+                                    "activity": "Send email - alert",
+                                    "dependencyConditions": [
+                                        "Failed"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.00:10:00",
+                                "retry": 1,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "linkedServiceName": {
+                                "referenceName": "ls_sql_domesday_mi",
+                                "type": "LinkedServiceReference"
+                            },
+                            "typeProperties": {
+                                "storedProcedureName": "ops.usp_log_notification",
+                                "storedProcedureParameters": {
+                                    "runId": {
+                                        "value": {
+                                            "value": "@pipeline().parameters.runId",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "domainCode": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.domainCode",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "channel": {
+                                        "value": "email",
+                                        "type": "String"
+                                    },
+                                    "kind": {
+                                        "value": "alert",
+                                        "type": "String"
+                                    },
+                                    "status": {
+                                        "value": "failed",
+                                        "type": "String"
+                                    },
+                                    "recipient": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.emailTo",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "subject": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.alertSubject",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Log Slack secret failure - alert",
+                            "type": "SqlServerStoredProcedure",
+                            "dependsOn": [
+                                {
+                                    "activity": "Get Slack webhook - alert",
+                                    "dependencyConditions": [
+                                        "Failed"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.00:10:00",
+                                "retry": 1,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "linkedServiceName": {
+                                "referenceName": "ls_sql_domesday_mi",
+                                "type": "LinkedServiceReference"
+                            },
+                            "typeProperties": {
+                                "storedProcedureName": "ops.usp_log_notification",
+                                "storedProcedureParameters": {
+                                    "runId": {
+                                        "value": {
+                                            "value": "@pipeline().parameters.runId",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "domainCode": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.domainCode",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "channel": {
+                                        "value": "slack",
+                                        "type": "String"
+                                    },
+                                    "kind": {
+                                        "value": "alert",
+                                        "type": "String"
+                                    },
+                                    "status": {
+                                        "value": "failed",
+                                        "type": "String"
+                                    },
+                                    "detail": {
+                                        "value": "Could not read the Slack webhook secret from Key Vault",
+                                        "type": "String"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "If digest",
+                "type": "IfCondition",
+                "dependsOn": [
+                    {
+                        "activity": "Get payloads",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "typeProperties": {
+                    "expression": {
+                        "value": "@bool(activity('Get payloads').output.firstRow.sendDigest)",
+                        "type": "Expression"
+                    },
+                    "ifTrueActivities": [
+                        {
+                            "name": "Get Slack webhook - digest",
+                            "type": "WebActivity",
+                            "dependsOn": [],
+                            "policy": {
+                                "timeout": "0.00:02:00",
+                                "retry": 2,
+                                "retryIntervalInSeconds": 30,
+                                "secureInput": false,
+                                "secureOutput": true
+                            },
+                            "typeProperties": {
+                                "method": "GET",
+                                "url": {
+                                    "value": "@concat('https://kv-aub-automation.vault.azure.net/secrets/', activity('Get payloads').output.firstRow.slackSecretName, '?api-version=7.4')",
+                                    "type": "Expression"
+                                },
+                                "authentication": {
+                                    "type": "MSI",
+                                    "resource": "https://vault.azure.net"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Post to Slack - digest",
+                            "type": "WebActivity",
+                            "dependsOn": [
+                                {
+                                    "activity": "Get Slack webhook - digest",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.00:02:00",
+                                "retry": 2,
+                                "retryIntervalInSeconds": 30,
+                                "secureInput": true,
+                                "secureOutput": false
+                            },
+                            "typeProperties": {
+                                "method": "POST",
+                                "url": {
+                                    "value": "@activity('Get Slack webhook - digest').output.value",
+                                    "type": "Expression"
+                                },
+                                "headers": {
+                                    "Content-Type": "application/json"
+                                },
+                                "body": {
+                                    "value": "@json(activity('Get payloads').output.firstRow.slackDigestBody)",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Send email - digest",
+                            "type": "WebActivity",
+                            "dependsOn": [],
+                            "policy": {
+                                "timeout": "0.00:02:00",
+                                "retry": 2,
+                                "retryIntervalInSeconds": 30,
+                                "secureInput": false,
+                                "secureOutput": false
+                            },
+                            "typeProperties": {
+                                "method": "POST",
+                                "url": "https://graph.microsoft.com/v1.0/users/automation@aubreys.group/sendMail",
+                                "headers": {
+                                    "Content-Type": "application/json"
+                                },
+                                "body": {
+                                    "value": "@json(activity('Get payloads').output.firstRow.graphDigestBody)",
+                                    "type": "Expression"
+                                },
+                                "authentication": {
+                                    "type": "MSI",
+                                    "resource": "https://graph.microsoft.com"
+                                }
+                            }
+                        },
+                        {
+                            "name": "Log slack sent - digest",
+                            "type": "SqlServerStoredProcedure",
+                            "dependsOn": [
+                                {
+                                    "activity": "Post to Slack - digest",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.00:10:00",
+                                "retry": 1,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "linkedServiceName": {
+                                "referenceName": "ls_sql_domesday_mi",
+                                "type": "LinkedServiceReference"
+                            },
+                            "typeProperties": {
+                                "storedProcedureName": "ops.usp_log_notification",
+                                "storedProcedureParameters": {
+                                    "runId": {
+                                        "value": {
+                                            "value": "@pipeline().parameters.runId",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "domainCode": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.domainCode",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "channel": {
+                                        "value": "slack",
+                                        "type": "String"
+                                    },
+                                    "kind": {
+                                        "value": "digest",
+                                        "type": "String"
+                                    },
+                                    "status": {
+                                        "value": "sent",
+                                        "type": "String"
+                                    },
+                                    "recipient": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.areaCode",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "subject": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.digestSubject",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Log slack failed - digest",
+                            "type": "SqlServerStoredProcedure",
+                            "dependsOn": [
+                                {
+                                    "activity": "Post to Slack - digest",
+                                    "dependencyConditions": [
+                                        "Failed"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.00:10:00",
+                                "retry": 1,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "linkedServiceName": {
+                                "referenceName": "ls_sql_domesday_mi",
+                                "type": "LinkedServiceReference"
+                            },
+                            "typeProperties": {
+                                "storedProcedureName": "ops.usp_log_notification",
+                                "storedProcedureParameters": {
+                                    "runId": {
+                                        "value": {
+                                            "value": "@pipeline().parameters.runId",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "domainCode": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.domainCode",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "channel": {
+                                        "value": "slack",
+                                        "type": "String"
+                                    },
+                                    "kind": {
+                                        "value": "digest",
+                                        "type": "String"
+                                    },
+                                    "status": {
+                                        "value": "failed",
+                                        "type": "String"
+                                    },
+                                    "recipient": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.areaCode",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "subject": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.digestSubject",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Log email sent - digest",
+                            "type": "SqlServerStoredProcedure",
+                            "dependsOn": [
+                                {
+                                    "activity": "Send email - digest",
+                                    "dependencyConditions": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.00:10:00",
+                                "retry": 1,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "linkedServiceName": {
+                                "referenceName": "ls_sql_domesday_mi",
+                                "type": "LinkedServiceReference"
+                            },
+                            "typeProperties": {
+                                "storedProcedureName": "ops.usp_log_notification",
+                                "storedProcedureParameters": {
+                                    "runId": {
+                                        "value": {
+                                            "value": "@pipeline().parameters.runId",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "domainCode": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.domainCode",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "channel": {
+                                        "value": "email",
+                                        "type": "String"
+                                    },
+                                    "kind": {
+                                        "value": "digest",
+                                        "type": "String"
+                                    },
+                                    "status": {
+                                        "value": "sent",
+                                        "type": "String"
+                                    },
+                                    "recipient": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.emailTo",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "subject": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.digestSubject",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Log email failed - digest",
+                            "type": "SqlServerStoredProcedure",
+                            "dependsOn": [
+                                {
+                                    "activity": "Send email - digest",
+                                    "dependencyConditions": [
+                                        "Failed"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.00:10:00",
+                                "retry": 1,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "linkedServiceName": {
+                                "referenceName": "ls_sql_domesday_mi",
+                                "type": "LinkedServiceReference"
+                            },
+                            "typeProperties": {
+                                "storedProcedureName": "ops.usp_log_notification",
+                                "storedProcedureParameters": {
+                                    "runId": {
+                                        "value": {
+                                            "value": "@pipeline().parameters.runId",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "domainCode": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.domainCode",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "channel": {
+                                        "value": "email",
+                                        "type": "String"
+                                    },
+                                    "kind": {
+                                        "value": "digest",
+                                        "type": "String"
+                                    },
+                                    "status": {
+                                        "value": "failed",
+                                        "type": "String"
+                                    },
+                                    "recipient": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.emailTo",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "subject": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.digestSubject",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "Log Slack secret failure - digest",
+                            "type": "SqlServerStoredProcedure",
+                            "dependsOn": [
+                                {
+                                    "activity": "Get Slack webhook - digest",
+                                    "dependencyConditions": [
+                                        "Failed"
+                                    ]
+                                }
+                            ],
+                            "policy": {
+                                "timeout": "0.00:10:00",
+                                "retry": 1,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "linkedServiceName": {
+                                "referenceName": "ls_sql_domesday_mi",
+                                "type": "LinkedServiceReference"
+                            },
+                            "typeProperties": {
+                                "storedProcedureName": "ops.usp_log_notification",
+                                "storedProcedureParameters": {
+                                    "runId": {
+                                        "value": {
+                                            "value": "@pipeline().parameters.runId",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "domainCode": {
+                                        "value": {
+                                            "value": "@activity('Get payloads').output.firstRow.domainCode",
+                                            "type": "Expression"
+                                        },
+                                        "type": "String"
+                                    },
+                                    "channel": {
+                                        "value": "slack",
+                                        "type": "String"
+                                    },
+                                    "kind": {
+                                        "value": "digest",
+                                        "type": "String"
+                                    },
+                                    "status": {
+                                        "value": "failed",
+                                        "type": "String"
+                                    },
+                                    "detail": {
+                                        "value": "Could not read the Slack webhook secret from Key Vault",
+                                        "type": "String"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        ],
+        "folder": {
+            "name": "ops"
+        },
+        "annotations": [],
+        "parameters": {
+            "runId": {
+                "type": "string"
+            }
+        }
+    }
+}

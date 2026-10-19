@@ -1,0 +1,36 @@
+{
+    "name": "ds_datain_binary",
+    "properties": {
+        "linkedServiceName": {
+            "referenceName": "AubDataInADLS",
+            "type": "LinkedServiceReference"
+        },
+        "annotations": [],
+        "type": "Binary",
+        "parameters": {
+            "folderPath": {
+                "type": "string"
+            },
+            "fileName": {
+                "type": "string"
+            }
+        },
+        "typeProperties": {
+            "location": {
+                "type": "AzureBlobFSLocation",
+                "fileSystem": "infogenesis",
+                "folderPath": {
+                    "value": "@dataset().folderPath",
+                    "type": "Expression"
+                },
+                "fileName": {
+                    "value": "@dataset().fileName",
+                    "type": "Expression"
+                }
+            }
+        },
+        "folder": {
+            "name": "infogenesis"
+        }
+    }
+}

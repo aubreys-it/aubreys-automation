@@ -1,0 +1,12 @@
+{
+    "name": "ls_fn_ig_etl",
+    "properties": {
+        "type": "AzureFunction",
+        "annotations": [],
+        "typeProperties": {
+            "functionAppUrl": "https://aub-ig-etl-btfsheaedcfuhyby.eastus-01.azurewebsites.net",
+            "authentication": "MSI",
+            "resourceId": "api://5d0b5f6b-8185-47a7-8ae6-42bbef337164"
+        }
+    }
+}

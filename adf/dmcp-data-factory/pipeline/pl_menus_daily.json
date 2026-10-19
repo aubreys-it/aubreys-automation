@@ -1,0 +1,190 @@
+{
+    "name": "pl_menus_daily",
+    "properties": {
+        "activities": [
+            {
+                "name": "Start run log",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.00:10:00",
+                    "retry": 1,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "linkedServiceName": {
+                    "referenceName": "ls_sql_domesday_mi",
+                    "type": "LinkedServiceReference"
+                },
+                "typeProperties": {
+                    "storedProcedureName": "ops.usp_run_start",
+                    "storedProcedureParameters": {
+                        "runId": {
+                            "value": {
+                                "value": "@pipeline().RunId",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "domainCode": {
+                            "value": "menus",
+                            "type": "String"
+                        },
+                        "pipelineName": {
+                            "value": {
+                                "value": "@pipeline().Pipeline",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "triggerName": {
+                            "value": {
+                                "value": "@pipeline().TriggerName",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "triggerType": {
+                            "value": {
+                                "value": "@pipeline().TriggerType",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        }
+                    }
+                }
+            },
+            {
+                "name": "Run menus",
+                "type": "ExecutePipeline",
+                "dependsOn": [
+                    {
+                        "activity": "Start run log",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "typeProperties": {
+                    "pipeline": {
+                        "referenceName": "pl_menus_core",
+                        "type": "PipelineReference"
+                    },
+                    "waitOnCompletion": true,
+                    "parameters": {
+                        "runId": {
+                            "value": "@pipeline().RunId",
+                            "type": "Expression"
+                        },
+                        "onlyMissing": {
+                            "value": "@pipeline().parameters.onlyMissing",
+                            "type": "Expression"
+                        },
+                        "maxFileAgeHours": {
+                            "value": "@pipeline().parameters.maxFileAgeHours",
+                            "type": "Expression"
+                        },
+                        "rejectThresholdPct": {
+                            "value": "@pipeline().parameters.rejectThresholdPct",
+                            "type": "Expression"
+                        },
+                        "missingSeverity": {
+                            "value": "@pipeline().parameters.missingSeverity",
+                            "type": "Expression"
+                        }
+                    }
+                }
+            },
+            {
+                "name": "End run log",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [
+                    {
+                        "activity": "Run menus",
+                        "dependencyConditions": [
+                            "Completed"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.00:10:00",
+                    "retry": 1,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "linkedServiceName": {
+                    "referenceName": "ls_sql_domesday_mi",
+                    "type": "LinkedServiceReference"
+                },
+                "typeProperties": {
+                    "storedProcedureName": "ops.usp_run_end",
+                    "storedProcedureParameters": {
+                        "runId": {
+                            "value": {
+                                "value": "@pipeline().RunId",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "failureMessage": {
+                            "value": {
+                                "value": "@coalesce(activity('Run menus')?.error?.message, '')",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        }
+                    }
+                }
+            },
+            {
+                "name": "Send notifications",
+                "type": "ExecutePipeline",
+                "dependsOn": [
+                    {
+                        "activity": "End run log",
+                        "dependencyConditions": [
+                            "Completed"
+                        ]
+                    }
+                ],
+                "typeProperties": {
+                    "pipeline": {
+                        "referenceName": "pl_ops_notify",
+                        "type": "PipelineReference"
+                    },
+                    "waitOnCompletion": true,
+                    "parameters": {
+                        "runId": {
+                            "value": "@pipeline().RunId",
+                            "type": "Expression"
+                        }
+                    }
+                }
+            }
+        ],
+        "folder": {
+            "name": "menus"
+        },
+        "annotations": [],
+        "parameters": {
+            "onlyMissing": {
+                "type": "bool",
+                "defaultValue": false
+            },
+            "maxFileAgeHours": {
+                "type": "int",
+                "defaultValue": 20
+            },
+            "rejectThresholdPct": {
+                "type": "float",
+                "defaultValue": 1.0
+            },
+            "missingSeverity": {
+                "type": "string",
+                "defaultValue": "ERROR"
+            }
+        }
+    }
+}
