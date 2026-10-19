@@ -1,0 +1,15 @@
+{
+	"name": "adf-aub-ops",
+	"properties": {
+		"trustModeClaimForMi": {
+			"value": "Disabled",
+			"editable": true
+		}
+	},
+	"location": "eastus",
+	"identity": {
+		"type": "SystemAssigned",
+		"principalId": "c9125030-71bd-4ce6-9ed2-0bf6f0c49d7a",
+		"tenantId": "64edf217-1246-405a-a5bc-c1922d9184e2"
+	}
+}

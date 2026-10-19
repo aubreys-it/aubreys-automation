@@ -1,0 +1,128 @@
+{
+	"name": "SetSftpState",
+	"properties": {
+		"description": "Turns SFTP on or off for one storage account in rg-data-pipeline, waits, then verifies the new state. Fails (and alerts) if the state did not change. Called by the SftpOn-* / SftpOff-* triggers.",
+		"activities": [
+			{
+				"name": "SetSftp",
+				"type": "WebActivity",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.00:10:00",
+					"retry": 2,
+					"retryIntervalInSeconds": 60
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"method": "PATCH",
+					"httpRequestTimeout": "00:05:00",
+					"url": {
+						"value": "@concat('https://management.azure.com/subscriptions/8e1251cd-d0c0-4293-8898-73a6a980f05e/resourceGroups/rg-data-pipeline/providers/Microsoft.Storage/storageAccounts/', pipeline().parameters.storageAccount, '?api-version=2023-05-01')",
+						"type": "Expression"
+					},
+					"body": {
+						"value": "@json(concat('{\"properties\":{\"isSftpEnabled\":', if(pipeline().parameters.enable, 'true', 'false'), '}}'))",
+						"type": "Expression"
+					},
+					"authentication": {
+						"type": "MSI",
+						"resource": "https://management.azure.com/"
+					}
+				}
+			},
+			{
+				"name": "WaitForChange",
+				"type": "Wait",
+				"dependsOn": [
+					{
+						"activity": "SetSftp",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"waitTimeInSeconds": 60
+				}
+			},
+			{
+				"name": "ReadBack",
+				"type": "WebActivity",
+				"dependsOn": [
+					{
+						"activity": "WaitForChange",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.00:05:00",
+					"retry": 2,
+					"retryIntervalInSeconds": 30
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"method": "GET",
+					"url": {
+						"value": "@concat('https://management.azure.com/subscriptions/8e1251cd-d0c0-4293-8898-73a6a980f05e/resourceGroups/rg-data-pipeline/providers/Microsoft.Storage/storageAccounts/', pipeline().parameters.storageAccount, '?api-version=2023-05-01')",
+						"type": "Expression"
+					},
+					"authentication": {
+						"type": "MSI",
+						"resource": "https://management.azure.com/"
+					}
+				}
+			},
+			{
+				"name": "CheckState",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "ReadBack",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(coalesce(activity('ReadBack').output.properties.isSftpEnabled, false), pipeline().parameters.enable)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "StateMismatch",
+							"type": "Fail",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"message": {
+									"value": "@concat('SFTP on ', pipeline().parameters.storageAccount, ' did not change to ', string(pipeline().parameters.enable))",
+									"type": "Expression"
+								},
+								"errorCode": "SftpStateMismatch"
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"enable": {
+				"type": "Bool"
+			},
+			"storageAccount": {
+				"type": "String"
+			}
+		},
+		"folder": {
+			"name": "SFTP schedule"
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-10-15T13:30:47Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}
