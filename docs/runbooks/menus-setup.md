@@ -33,10 +33,10 @@ Exchange RBAC for Applications, so the factory can send from that one mailbox an
 ```powershell
 Connect-ExchangeOnline
 New-ServicePrincipal -AppId $adfAppId -ObjectId $adfObjectId -DisplayName 'adf-aub-ops'
-New-ManagementScope -Name 'Automation sender' -RecipientRestrictionFilter "PrimarySmtpAddress -eq 'automation@aubreys.group'"
+if (-not (Get-ManagementScope -Identity 'Automation sender' -ErrorAction SilentlyContinue)) { New-ManagementScope -Name 'Automation sender' -RecipientRestrictionFilter "PrimarySmtpAddress -eq 'automation@aubreys.group'" }
 New-ManagementRoleAssignment -App $adfAppId -Role 'Application Mail.Send' -CustomResourceScope 'Automation sender'
 Test-ServicePrincipalAuthorization -Identity $adfAppId -Resource 'automation@aubreys.group'   # InScope = True
-Test-ServicePrincipalAuthorization -Identity $adfAppId -Resource 'grant@aubreys.group'        # InScope = False
+Test-ServicePrincipalAuthorization -Identity $adfAppId -Resource 'ghouser@aubreys.group'        # InScope = False
 ```
 
 Permission changes can take up to an hour to apply.
@@ -69,7 +69,7 @@ az role assignment create --assignee-object-id $adfObjectId --assignee-principal
   --scope "$(az storage account show -g $rg -n aubwebpub --query id -o tsv)/blobServices/default/containers/menus"
 ```
 
-**aubdatain**: the factory already has access through `AubDataInADLS`. Add:
+**aubdatain**: `ls_adls_aubdatain` uses the factory's managed identity, so grant it Storage Blob Data Contributor on the `infogenesis` container. Also add:
 - the function's identity (after step 6): Storage Blob Data Contributor on the `infogenesis` container
 - a lifecycle rule: delete blobs under `infogenesis/menu_items/raw/` after 90 days and `infogenesis/menu_items/parsed/` after 14 days
 
