@@ -10,7 +10,7 @@ Values used below. Change them here and in `tools/build_adf.py` if you pick diff
 | Data factory | `adf-aub-ops` (in resource group `rg-ops-automation`) |
 | Key Vault | `kv-aub-automation` (use an existing vault if you have one) |
 | Web storage account | `aubwebpub`, container `menus` |
-| Function app | `aub-ig-etl` |
+| Function app | `aub-ig-etl` (in resource group `DMCP-functions`) |
 | Sender mailbox | `automation@aubreys.group`, display name "Aubrey's Automation" |
 | Admin group | Automation Ops Admins, `automation-ops-admins@aubreys.group` |
 | Slack channel | `#alert-ops-automation` |
@@ -78,9 +78,9 @@ az role assignment create --assignee-object-id $adfObjectId --assignee-principal
 Flex Consumption, Python 3.11, system-assigned identity on. Deploy `functions/ig-etl` (`func azure functionapp publish aub-ig-etl` or a GitHub Action).
 
 Lock it to the factory (App Service Authentication, Microsoft Entra):
-1. Create the app registration, set App ID URI `api://aub-ig-etl`.
+1. Create the app registration, keep the default App ID URI (this deployment: `api://5d0b5f6b-8185-47a7-8ae6-42bbef337164`).
 2. Authentication → Require authentication, unauthenticated requests get HTTP 401.
-3. Allowed token audiences: `api://aub-ig-etl`.
+3. Allowed token audiences: the App ID URI above.
 4. Allowed client applications: `$adfAppId` only.
 
 The old `agilysys-etl/parse-menu-items` function stays as it is until cutover is finished; nothing calls it.
