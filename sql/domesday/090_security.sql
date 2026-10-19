@@ -1,7 +1,7 @@
 /*
   Database access. Run as an Entra admin of mcp-alex (contained users from Entra; no SQL logins).
 
-  automation_writer  ADF (dmcp-data-factory managed identity): run procs, write staging.
+  automation_writer  ADF (adf-aub-ops managed identity): run procs, write staging.
   ops_reader         read-only view of the ops log: daily briefing, dashboard, future MCP server.
                      Granted to the "Automation Ops Admins" mail-enabled security group so
                      adding someone to the group gives them both the emails and the read access.
@@ -24,9 +24,9 @@ GRANT SELECT ON OBJECT::menu.publish_state TO ops_reader;
 GO
 
 /* Managed identity of the data factory. The name is the factory name. */
-IF DATABASE_PRINCIPAL_ID(N'dmcp-data-factory') IS NULL
-    CREATE USER [dmcp-data-factory] FROM EXTERNAL PROVIDER;
-ALTER ROLE automation_writer ADD MEMBER [dmcp-data-factory];
+IF DATABASE_PRINCIPAL_ID(N'adf-aub-ops') IS NULL
+    CREATE USER [adf-aub-ops] FROM EXTERNAL PROVIDER;
+ALTER ROLE automation_writer ADD MEMBER [adf-aub-ops];
 GO
 
 /* Uncomment once the group exists (Exchange admin center -> Groups -> Mail-enabled security). */

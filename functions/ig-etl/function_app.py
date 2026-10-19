@@ -3,7 +3,7 @@ aub-ig-etl: InfoGenesis export parsers, called by Azure Data Factory.
 
 Auth model (no keys, no SAS):
   * Inbound: App Service Authentication (Microsoft Entra). Only the ADF
-    managed identity (dmcp-data-factory) is an allowed client application.
+    managed identity (adf-aub-ops) is an allowed client application.
     The function itself uses AuthLevel.ANONYMOUS because Easy Auth sits in front.
   * Outbound: the function app's system-assigned managed identity, with
     Storage Blob Data Contributor on the aubdatain/infogenesis container.

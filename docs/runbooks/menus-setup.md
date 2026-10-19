@@ -6,8 +6,8 @@ Values used below. Change them here and in `tools/build_adf.py` if you pick diff
 
 | Thing | Name |
 |---|---|
-| Resource group | `DMCP` |
-| Data factory | `dmcp-data-factory` |
+| Resource group | `DMCP` (Key Vault, SQL, function app, `aubwebpub`) |
+| Data factory | `adf-aub-ops` (in resource group `rg-ops-automation`) |
 | Key Vault | `kv-aub-automation` (use an existing vault if you have one) |
 | Web storage account | `aubwebpub`, container `menus` |
 | Function app | `aub-ig-etl` |
@@ -16,8 +16,8 @@ Values used below. Change them here and in `tools/build_adf.py` if you pick diff
 | Slack channel | `#alert-ops-automation` |
 
 ```powershell
-$rg = 'DMCP'; $adf = 'dmcp-data-factory'; $kv = 'kv-aub-automation'
-$adfObjectId = az datafactory show -g $rg -n $adf --query identity.principalId -o tsv
+$rg = 'DMCP'; $adfRg = 'rg-ops-automation'; $adf = 'adf-aub-ops'; $kv = 'kv-aub-automation'
+$adfObjectId = az datafactory show -g $adfRg -n $adf --query identity.principalId -o tsv
 $adfAppId    = az ad sp show --id $adfObjectId --query appId -o tsv
 ```
 
@@ -32,7 +32,7 @@ Exchange RBAC for Applications, so the factory can send from that one mailbox an
 
 ```powershell
 Connect-ExchangeOnline
-New-ServicePrincipal -AppId $adfAppId -ObjectId $adfObjectId -DisplayName 'dmcp-data-factory'
+New-ServicePrincipal -AppId $adfAppId -ObjectId $adfObjectId -DisplayName 'adf-aub-ops'
 New-ManagementScope -Name 'Automation sender' -RecipientRestrictionFilter "PrimarySmtpAddress -eq 'automation@aubreys.group'"
 New-ManagementRoleAssignment -App $adfAppId -Role 'Application Mail.Send' -CustomResourceScope 'Automation sender'
 Test-ServicePrincipalAuthorization -Identity $adfAppId -Resource 'automation@aubreys.group'   # InScope = True
@@ -94,7 +94,7 @@ Connect to `mcp-alex/domesday` as an Entra admin and run `sql/domesday/000…090
 ## 8. Data factory
 
 1. In `tools/build_adf.py`, confirm the names at the top. For the IG host key: `ssh-keyscan -t ed25519 portal.ftp.infogenesisasp.com | ssh-keygen -lf -`, then put the result in `hostKeyFingerprint`. Run `python tools/build_adf.py`.
-2. ADF Studio → Manage → Git configuration: GitHub, repo `aubreys-automation`, collaboration branch `main`, root folder `/adf/dmcp-data-factory`, **Import existing resources: yes**. Commit the generated files on top.
+2. ADF Studio → Manage → Git configuration: GitHub, repo `aubreys-automation`, collaboration branch `main`, root folder `/adf/adf-aub-ops`, publish branch `adf_publish`, **Import existing resources: unchecked** (the repo is the source of truth).
 3. Publish. Triggers arrive **Stopped**.
 4. Test: Debug `pl_menus_daily` with `missingSeverity = WARN`. Check:
    - `SELECT * FROM ops.v_open_issues ORDER BY loggedUtc DESC`

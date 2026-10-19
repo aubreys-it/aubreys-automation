@@ -7,12 +7,12 @@ Website bar menus for every store, built daily from InfoGenesis. Nobody uploads 
 | Owner | IT (Grant) |
 | Ops area | `ops`: Slack `#alert-ops-automation`, email Automation Ops Admins |
 | Runs | 7:30 AM ET daily, retry 8:15 AM ET for stores that didn't load; watchdog 9:30 AM ET |
-| Identity | `dmcp-data-factory` system-assigned managed identity (ADF); `aub-ig-etl` managed identity (function) |
+| Identity | `adf-aub-ops` system-assigned managed identity (ADF); `aub-ig-etl` managed identity (function) |
 | Source | IG SFTP `portal.ftp.infogenesisasp.com:/Export/NN/MI_Exp.txt` (one per store, overwritten daily around 6:40 AM) |
 | Database | `mcp-alex` / `domesday`, schemas `ig`, `menu`, `stg`, `ops` |
 | Output | `https://aubwebpub.blob.core.windows.net/menus/v1/NN.json` (public read) |
 | Websites | Bluehost; shared PHP library `/home1/arburles/menu-lib`, per-store shims in each `.../menu/bar/` folder |
-| Code | `functions/ig-etl`, `sql/domesday`, `adf/dmcp-data-factory`, `web/`, `contracts/menu-v1.schema.json` |
+| Code | `functions/ig-etl`, `sql/domesday`, `adf/adf-aub-ops`, `web/`, `contracts/menu-v1.schema.json` |
 
 ## How it works
 

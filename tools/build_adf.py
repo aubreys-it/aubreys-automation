@@ -1,5 +1,5 @@
 """
-Generates the ADF resources for the menus domain into adf/dmcp-data-factory/ in the layout
+Generates the ADF resources for the menus domain into adf/adf-aub-ops/ in the layout
 ADF native git integration uses (linkedService/, dataset/, pipeline/, trigger/).
 
 Edit THIS file and re-run it rather than hand-editing the JSON, or edit in ADF Studio once
@@ -10,7 +10,7 @@ the factory is connected to git and stop using this script; don't do both.
 import json
 import pathlib
 
-ROOT = pathlib.Path(__file__).resolve().parents[1] / "adf" / "dmcp-data-factory"
+ROOT = pathlib.Path(__file__).resolve().parents[1] / "adf" / "adf-aub-ops"
 
 # ---- environment values: CONFIRM before connecting the factory to git ----
 KEY_VAULT = "kv-aub-automation"                     # Key Vault holding ig-sftp-password + Slack webhooks
