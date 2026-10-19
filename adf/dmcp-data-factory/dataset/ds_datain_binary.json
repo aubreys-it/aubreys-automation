@@ -2,7 +2,7 @@
     "name": "ds_datain_binary",
     "properties": {
         "linkedServiceName": {
-            "referenceName": "AubDataInADLS",
+            "referenceName": "ls_adls_aubdatain",
             "type": "LinkedServiceReference"
         },
         "annotations": [],

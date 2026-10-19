@@ -110,7 +110,7 @@
                                             },
                                             "message": {
                                                 "value": {
-                                                    "value": "@concat('Store ', @pipeline().parameters.nn, ': no MI_Exp.txt in /Export/', @pipeline().parameters.nn, ' on the IG SFTP')",
+                                                    "value": "@concat('Store ', pipeline().parameters.nn, ': no MI_Exp.txt in /Export/', pipeline().parameters.nn, ' on the IG SFTP')",
                                                     "type": "Expression"
                                                 },
                                                 "type": "String"
@@ -176,7 +176,7 @@
                                             },
                                             "message": {
                                                 "value": {
-                                                    "value": "@concat('Store ', @pipeline().parameters.nn, ': MI_Exp.txt was last updated ', activity('Check IG file').output.lastModified, ' UTC')",
+                                                    "value": "@concat('Store ', pipeline().parameters.nn, ': MI_Exp.txt was last updated ', activity('Check IG file').output.lastModified, ' UTC')",
                                                     "type": "Expression"
                                                 },
                                                 "type": "String"
@@ -254,7 +254,7 @@
                                                     "type": "Expression"
                                                 },
                                                 "fileName": {
-                                                    "value": "@concat(@pipeline().parameters.nn, '_MI_Exp.txt')",
+                                                    "value": "@concat(pipeline().parameters.nn, '_MI_Exp.txt')",
                                                     "type": "Expression"
                                                 }
                                             }
@@ -317,7 +317,7 @@
                                             },
                                             "sourcePath": {
                                                 "value": {
-                                                    "value": "@concat('infogenesis/', variables('rawFolder'), '/', @pipeline().parameters.nn, '_MI_Exp.txt')",
+                                                    "value": "@concat('infogenesis/', variables('rawFolder'), '/', pipeline().parameters.nn, '_MI_Exp.txt')",
                                                     "type": "Expression"
                                                 },
                                                 "type": "String"
@@ -445,7 +445,7 @@
                                             },
                                             "message": {
                                                 "value": {
-                                                    "value": "@concat('Store ', @pipeline().parameters.nn, ': could not copy MI_Exp.txt from IG SFTP: ', activity('Copy raw file').error.message)",
+                                                    "value": "@concat('Store ', pipeline().parameters.nn, ': could not copy MI_Exp.txt from IG SFTP: ', activity('Copy raw file').error.message)",
                                                     "type": "Expression"
                                                 },
                                                 "type": "String"
@@ -506,7 +506,7 @@
                                             },
                                             "message": {
                                                 "value": {
-                                                    "value": "@concat('Store ', @pipeline().parameters.nn, ': parser function call failed: ', activity('Parse file').error.message)",
+                                                    "value": "@concat('Store ', pipeline().parameters.nn, ': parser function call failed: ', activity('Parse file').error.message)",
                                                     "type": "Expression"
                                                 },
                                                 "type": "String"
@@ -572,7 +572,7 @@
                         },
                         "message": {
                             "value": {
-                                "value": "@concat('Store ', @pipeline().parameters.nn, ': could not reach the IG SFTP: ', activity('Check IG file').error.message)",
+                                "value": "@concat('Store ', pipeline().parameters.nn, ': could not reach the IG SFTP: ', activity('Check IG file').error.message)",
                                 "type": "Expression"
                             },
                             "type": "String"

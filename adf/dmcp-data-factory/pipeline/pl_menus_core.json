@@ -122,7 +122,7 @@
                                     "type": "DatasetReference",
                                     "parameters": {
                                         "folderPath": {
-                                            "value": "@concat('menu_items/parsed/', @pipeline().parameters.runId, '/', item().entity)",
+                                            "value": "@concat('menu_items/parsed/', pipeline().parameters.runId, '/', item().entity)",
                                             "type": "Expression"
                                         }
                                     }
@@ -172,7 +172,7 @@
                                                     "type": "AzureBlobFSReadSettings",
                                                     "recursive": false,
                                                     "wildcardFolderPath": {
-                                                        "value": "@concat('menu_items/parsed/', @pipeline().parameters.runId, '/', item().entity)",
+                                                        "value": "@concat('menu_items/parsed/', pipeline().parameters.runId, '/', item().entity)",
                                                         "type": "Expression"
                                                     },
                                                     "wildcardFileName": "*.csv"
@@ -207,7 +207,7 @@
                                                 "type": "DatasetReference",
                                                 "parameters": {
                                                     "folderPath": {
-                                                        "value": "@concat('menu_items/parsed/', @pipeline().parameters.runId, '/', item().entity)",
+                                                        "value": "@concat('menu_items/parsed/', pipeline().parameters.runId, '/', item().entity)",
                                                         "type": "Expression"
                                                     }
                                                 }

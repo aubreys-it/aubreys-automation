@@ -197,7 +197,7 @@
                                     },
                                     "message": {
                                         "value": {
-                                            "value": "@concat('Store ', @pipeline().parameters.nn, ': ', string(activity('Build menu JSON').output.firstRow.itemCount), ' items published')",
+                                            "value": "@concat('Store ', pipeline().parameters.nn, ': ', string(activity('Build menu JSON').output.firstRow.itemCount), ' items published')",
                                             "type": "Expression"
                                         },
                                         "type": "String"
@@ -258,7 +258,7 @@
                                     },
                                     "message": {
                                         "value": {
-                                            "value": "@concat('Store ', @pipeline().parameters.nn, ': menu JSON upload failed: ', activity('Upload JSON').error.message)",
+                                            "value": "@concat('Store ', pipeline().parameters.nn, ': menu JSON upload failed: ', activity('Upload JSON').error.message)",
                                             "type": "Expression"
                                         },
                                         "type": "String"
@@ -322,7 +322,7 @@
                         },
                         "message": {
                             "value": {
-                                "value": "@concat('Store ', @pipeline().parameters.nn, ': building the menu JSON failed: ', activity('Build menu JSON').error.message)",
+                                "value": "@concat('Store ', pipeline().parameters.nn, ': building the menu JSON failed: ', activity('Build menu JSON').error.message)",
                                 "type": "Expression"
                             },
                             "type": "String"

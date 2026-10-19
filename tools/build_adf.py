@@ -16,9 +16,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[1] / "adf" / "dmcp-data-factory"
 KEY_VAULT = "kv-aub-automation"                     # Key Vault holding ig-sftp-password + Slack webhooks
 WEB_STORAGE = "aubwebpub"                           # public-read account serving menu JSON
 MAIL_SENDER = "automation@aubreys.group"            # shared mailbox (Graph sendMail)
-FUNCTION_URL = "https://aub-ig-etl-btfsheaedcfuhyby.eastus-01.azurewebsites.net"
-FUNCTION_APP_ID_URI = "api://5d0b5f6b-8185-47a7-8ae6-42bbef337164"
-DATAIN_LS = "AubDataInADLS"                         # existing managed-identity linked service to aubdatain
+FUNCTION_URL = "https://aub-ig-etl-btfsheaedcfuhyby.eastus-01.azurewebsites.net"           # az functionapp show ... --query defaultHostName
+FUNCTION_APP_ID_URI = "api://5d0b5f6b-8185-47a7-8ae6-42bbef337164"  # Expose an API -> Application ID URI of the aub-ig-etl app registration
+DATAIN_LS = "ls_adls_aubdatain"                     # managed-identity linked service to aubdatain (defined below)
 SQL = {"referenceName": "ls_sql_domesday_mi", "type": "LinkedServiceReference"}
 
 
@@ -121,6 +121,11 @@ write("linkedService", "ls_sftp_ig", {
                      "store": {"referenceName": "ls_kv_automation", "type": "LinkedServiceReference"},
                      "secretName": "ig-sftp-password"}}})
 
+write("linkedService", DATAIN_LS, {
+    "type": "AzureBlobFS", "annotations": [],
+    "description": "aubdatain (ADLS Gen2) using the factory's managed identity.",
+    "typeProperties": {"url": "https://aubdatain.dfs.core.windows.net/"}})
+
 write("linkedService", "ls_fn_ig_etl", {
     "type": "AzureFunction", "annotations": [],
     "typeProperties": {"functionAppUrl": FUNCTION_URL, "authentication": "MSI", "resourceId": FUNCTION_APP_ID_URI}})
@@ -158,7 +163,7 @@ write("dataset", "ds_datain_csv", {
     "parameters": {"folderPath": {"type": "string"}},
     "typeProperties": {"location": {"type": "AzureBlobFSLocation", "fileSystem": "infogenesis",
                                     "folderPath": ex("@dataset().folderPath")},
-                       "columnDelimiter": ",", "rowDelimiter": "\r\n", "encodingName": "UTF-8",
+                       "columnDelimiter": ",", "encodingName": "UTF-8",
                        "escapeChar": "\"", "quoteChar": "\"", "firstRowAsHeader": True, "nullValue": ""},
     "folder": {"name": "infogenesis"}})
 
@@ -167,6 +172,8 @@ write("dataset", "ds_datain_csv", {
 RUN = "@pipeline().parameters.runId"
 LOC = "@pipeline().parameters.locId"
 NN = "@pipeline().parameters.nn"
+NN_E = NN[1:]    # same expressions without the leading @, for use inside concat(...)
+RUN_E = RUN[1:]
 RAW_FOLDER = "@concat('menu_items/raw/', formatDateTime(utcNow(), 'yyyy/MM/dd'))"
 
 ingest_ok = [
@@ -179,12 +186,12 @@ ingest_ok = [
      "inputs": [{"referenceName": "ds_ig_sftp_mi_exp", "type": "DatasetReference", "parameters": {"nn": ex(NN)}}],
      "outputs": [{"referenceName": "ds_datain_binary", "type": "DatasetReference",
                   "parameters": {"folderPath": ex("@variables('rawFolder')"),
-                                 "fileName": ex(f"@concat({NN}, '_MI_Exp.txt')")}}]},
+                                 "fileName": ex(f"@concat({NN_E}, '_MI_Exp.txt')")}}]},
     sp("Record arrival", "ops.usp_record_arrival", {
         "runId": (ex(RUN), "String"), "domainCode": ("menus", "String"), "feedCode": ("MI_Exp", "String"),
         "locId": (ex(LOC), "Int32"),
         "sourceModifiedUtc": (ex("@activity('Check IG file').output.lastModified"), "DateTime"),
-        "sourcePath": (ex(f"@concat('infogenesis/', variables('rawFolder'), '/', {NN}, '_MI_Exp.txt')"), "String")},
+        "sourcePath": (ex(f"@concat('infogenesis/', variables('rawFolder'), '/', {NN_E}, '_MI_Exp.txt')"), "String")},
        [dep("Copy raw file")]),
     {"name": "Parse file", "type": "AzureFunctionActivity", "dependsOn": [dep("Record arrival")],
      "policy": {"timeout": "0.00:05:00", "retry": 1, "retryIntervalInSeconds": 30},
@@ -200,10 +207,10 @@ ingest_ok = [
         "runId": (ex(RUN), "String"), "locId": (ex(LOC), "Int32"),
         "result": (ex("@string(activity('Parse file').output)"), "String")}, [dep("Parse file")]),
     log_event("Log copy failure", "LOAD_FAILED",
-              ex(f"@concat('Store ', {NN}, ': could not copy MI_Exp.txt from IG SFTP: ', activity('Copy raw file').error.message)"),
+              ex(f"@concat('Store ', {NN_E}, ': could not copy MI_Exp.txt from IG SFTP: ', activity('Copy raw file').error.message)"),
               [dep("Copy raw file", "Failed")], loc=ex(LOC), step="ingest"),
     log_event("Log parser failure", "PARSE_FAILED",
-              ex(f"@concat('Store ', {NN}, ': parser function call failed: ', activity('Parse file').error.message)"),
+              ex(f"@concat('Store ', {NN_E}, ': parser function call failed: ', activity('Parse file').error.message)"),
               [dep("Parse file", "Failed")], loc=ex(LOC), step="parse"),
 ]
 
@@ -225,17 +232,17 @@ pipeline("pl_menus_ingest_store", [
          "cases": [
              {"value": "missing", "activities": [
                  log_event("Log missing file", "FILE_MISSING",
-                           ex(f"@concat('Store ', {NN}, ': no MI_Exp.txt in /Export/', {NN}, ' on the IG SFTP')"),
+                           ex(f"@concat('Store ', {NN_E}, ': no MI_Exp.txt in /Export/', {NN_E}, ' on the IG SFTP')"),
                            [], loc=ex(LOC), severity=ex("@pipeline().parameters.missingSeverity"), step="ingest")]},
              {"value": "stale", "activities": [
                  log_event("Log stale file", "FILE_STALE",
-                           ex(f"@concat('Store ', {NN}, ': MI_Exp.txt was last updated ', "
+                           ex(f"@concat('Store ', {NN_E}, ': MI_Exp.txt was last updated ', "
                               "activity('Check IG file').output.lastModified, ' UTC')"),
                            [], loc=ex(LOC), severity=ex("@pipeline().parameters.missingSeverity"), step="ingest")]},
              {"value": "ok", "activities": ingest_ok},
          ]}},
     log_event("Log SFTP failure", "LOAD_FAILED",
-              ex(f"@concat('Store ', {NN}, ': could not reach the IG SFTP: ', activity('Check IG file').error.message)"),
+              ex(f"@concat('Store ', {NN_E}, ': could not reach the IG SFTP: ', activity('Check IG file').error.message)"),
               [dep("Check IG file", "Failed")], loc=ex(LOC), step="ingest"),
 ], params={
     "runId": {"type": "string"}, "locId": {"type": "int"}, "nn": {"type": "string"},
@@ -268,14 +275,14 @@ pipeline("pl_menus_publish_store", [
                  "sourcePath": (ex(f"@concat('{WEB_STORAGE}/menus/', activity('Build menu JSON').output.firstRow.blobName)"), "String")},
                 [dep("Upload JSON")]),
              log_event("Log published", "MENU_PUBLISHED",
-                       ex(f"@concat('Store ', {NN}, ': ', string(activity('Build menu JSON').output.firstRow.itemCount), ' items published')"),
+                       ex(f"@concat('Store ', {NN_E}, ': ', string(activity('Build menu JSON').output.firstRow.itemCount), ' items published')"),
                        [dep("Record publish")], loc=ex(LOC), step="publish"),
              log_event("Log upload failure", "PUBLISH_FAILED",
-                       ex(f"@concat('Store ', {NN}, ': menu JSON upload failed: ', activity('Upload JSON').error.message)"),
+                       ex(f"@concat('Store ', {NN_E}, ': menu JSON upload failed: ', activity('Upload JSON').error.message)"),
                        [dep("Upload JSON", "Failed")], loc=ex(LOC), step="publish"),
          ]}},
     log_event("Log build failure", "PUBLISH_FAILED",
-              ex(f"@concat('Store ', {NN}, ': building the menu JSON failed: ', activity('Build menu JSON').error.message)"),
+              ex(f"@concat('Store ', {NN_E}, ': building the menu JSON failed: ', activity('Build menu JSON').error.message)"),
               [dep("Build menu JSON", "Failed")], loc=ex(LOC), step="publish"),
 ], params={"runId": {"type": "string"}, "locId": {"type": "int"}, "nn": {"type": "string"}})
 
@@ -307,7 +314,7 @@ pipeline("pl_menus_core", [
                         "activities": [
                             {"name": "Check parsed files", "type": "GetMetadata", "dependsOn": [],
                              "typeProperties": {"dataset": {"referenceName": "ds_datain_csv", "type": "DatasetReference",
-                                                            "parameters": {"folderPath": ex(f"@concat('menu_items/parsed/', {RUN}, '/', item().entity)")}},
+                                                            "parameters": {"folderPath": ex(f"@concat('menu_items/parsed/', {RUN_E}, '/', item().entity)")}},
                                                 "fieldList": ["exists"],
                                                 "storeSettings": {"type": "AzureBlobFSReadSettings", "recursive": False},
                                                 "formatSettings": {"type": "DelimitedTextReadSettings"}}},
@@ -319,7 +326,7 @@ pipeline("pl_menus_core", [
                                                     "typeProperties": {
                                                         "source": {"type": "DelimitedTextSource",
                                                                    "storeSettings": {"type": "AzureBlobFSReadSettings", "recursive": False,
-                                                                                     "wildcardFolderPath": ex(f"@concat('menu_items/parsed/', {RUN}, '/', item().entity)"),
+                                                                                     "wildcardFolderPath": ex(f"@concat('menu_items/parsed/', {RUN_E}, '/', item().entity)"),
                                                                                      "wildcardFileName": "*.csv"},
                                                                    "formatSettings": {"type": "DelimitedTextReadSettings"}},
                                                         "sink": {"type": "AzureSqlSink",
@@ -332,7 +339,7 @@ pipeline("pl_menus_core", [
                                                                        "typeConversionSettings": {"allowDataTruncation": False,
                                                                                                   "treatBooleanAsNumber": False}}},
                                                     "inputs": [{"referenceName": "ds_datain_csv", "type": "DatasetReference",
-                                                                "parameters": {"folderPath": ex(f"@concat('menu_items/parsed/', {RUN}, '/', item().entity)")}}],
+                                                                "parameters": {"folderPath": ex(f"@concat('menu_items/parsed/', {RUN_E}, '/', item().entity)")}}],
                                                     "outputs": [{"referenceName": "ds_sql_stg_table", "type": "DatasetReference",
                                                                  "parameters": {"tableName": ex("@item().table")}}]}]}}]}},
     lookup("Merge into ig", "ig.usp_mi_merge", {"runId": (ex(RUN), "String")}, first_row=False,

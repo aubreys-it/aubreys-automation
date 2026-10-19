@@ -2,7 +2,7 @@
     "name": "ds_datain_csv",
     "properties": {
         "linkedServiceName": {
-            "referenceName": "AubDataInADLS",
+            "referenceName": "ls_adls_aubdatain",
             "type": "LinkedServiceReference"
         },
         "annotations": [],
@@ -23,7 +23,6 @@
                 }
             },
             "columnDelimiter": ",",
-            "rowDelimiter": "\r\n",
             "encodingName": "UTF-8",
             "escapeChar": "\"",
             "quoteChar": "\"",

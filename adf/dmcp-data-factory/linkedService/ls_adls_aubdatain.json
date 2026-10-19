@@ -1,0 +1,11 @@
+{
+    "name": "ls_adls_aubdatain",
+    "properties": {
+        "type": "AzureBlobFS",
+        "annotations": [],
+        "description": "aubdatain (ADLS Gen2) using the factory's managed identity.",
+        "typeProperties": {
+            "url": "https://aubdatain.dfs.core.windows.net/"
+        }
+    }
+}
