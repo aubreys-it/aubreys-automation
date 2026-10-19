@@ -258,7 +258,7 @@ BEGIN
     DECLARE @warnCount int = (SELECT COUNT(*) FROM ops.run_event WHERE runId = @runId AND severity = 'WARN');
 
     DECLARE @errStores nvarchar(200) = (
-        SELECT STRING_AGG(s, N', ') WITHIN GROUP (ORDER BY s)
+        SELECT STRING_AGG(CAST(s AS nvarchar(10)), N', ') WITHIN GROUP (ORDER BY s)
         FROM (SELECT DISTINCT RIGHT('0' + CAST(locId AS varchar(3)), 2) AS s
               FROM ops.run_event WHERE runId = @runId AND severity = 'ERROR' AND locId IS NOT NULL) x);
 
