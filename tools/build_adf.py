@@ -115,7 +115,7 @@ write("linkedService", "ls_sftp_ig", {
     "typeProperties": {
         "host": "portal.ftp.infogenesisasp.com", "port": 22,
         "skipHostKeyValidation": False,
-        "hostKeyFingerprint": "ssh-ed25519 256 REPLACE-WITH-FINGERPRINT",
+        "hostKeyFingerprint": "ssh-rsa 2048 0c:98:90:73:46:3d:d6:90:8d:a3:90:d8:a8:50:f4:e0",
         "authenticationType": "Basic", "userName": "AUBR1.ftpadmin",
         "password": {"type": "AzureKeyVaultSecret",
                      "store": {"referenceName": "ls_kv_automation", "type": "LinkedServiceReference"},
