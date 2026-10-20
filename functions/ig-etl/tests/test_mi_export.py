@@ -91,3 +91,33 @@ def test_sample_files_parse_completely(path):
     r = parse_text(decode(path.read_bytes()), loc)
     assert r.line_count > 1000
     assert r.rejects == []
+
+
+# Real line from the 2026-10-20 store 02 export: commas inside SKU descriptions.
+SKU_LINE = ('"U",2020023,"Bells Two Hearted","Bells","2 Hearted","Bells 2 Hearted",'
+            '{1,$8.00,2,$7.00,4,$6.00,6,$6.00,20,$7.00,29,$8.00,36,$7.00,37,$6.00,38,$6.00,39,$7.00,40,$8.00},'
+            '54,2,2,0,3,0,0,{"ABV-2020023","7.0%","ORIG-2020023","Comstock, MI","STYLE-2020023","American IPA",'
+            '"DESC-01-2020023","Bright citrus and pine,","DESC-02-2020023","all Centennial hops."},'
+            ',$0.00,0,0,1,0,1,0,0,89,"Bells 2 Hearted",1,0,{},{1,1},0,0,"Bells 2 Hearted",0,0,0,{},0,0,"",0,""')
+
+
+def test_sku_values_keep_commas_and_lose_quotes():
+    rec = parse_line(SKU_LINE, 2)
+    assert rec["_skuCodes"] == [
+        ("ABV-2020023", "7.0%"),
+        ("ORIG-2020023", "Comstock, MI"),
+        ("STYLE-2020023", "American IPA"),
+        ("DESC-01-2020023", "Bright citrus and pine,"),
+        ("DESC-02-2020023", "all Centennial hops."),
+    ]
+    assert rec["barGunCode"] is None
+    assert rec["itemGroupId"] == 89
+
+
+def test_sku_description_with_unescaped_quotes():
+    line = SKU_LINE.replace('"Bright citrus and pine,"', '"Crisp, dry, and light, with a "citrus" finish."')
+    assert parse_line(line, 2)["_skuCodes"][3] == ("DESC-01-2020023", 'Crisp, dry, and light, with a "citrus" finish.')
+
+
+def test_empty_sku_group_still_works():
+    assert parse_line(PLAIN, 2)["_skuCodes"] == []

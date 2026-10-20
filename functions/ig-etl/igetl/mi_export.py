@@ -13,14 +13,17 @@ the 2026-10-16 exports for stores 02 and 12: 10,832 of 10,832 lines parsed.
 
 Six repeating groups are written as {a,b,a,b,...} pairs:
     priceLevels       {priceLevelId, price}
-    skuCodes          {skuCode, skuDescription}      <-- PROVISIONAL, see below
+    skuCodes          {"skuCode", "skuDescription"}  <-- quoted, see below
     choiceGroups      {choiceGroupId, seqNumber}
     kitchenPrinters   {kpId, primaryFlag}
     storePriceLevels  {priceLevelId, price}
 
-PROVISIONAL: no item had SKUs in the sample files, so the exact way IG writes
-SKU descriptions containing commas, quotes or braces is unknown. The SKU group
-is parsed as simple pairs until the test item confirms the format.
+The SKU group is different: every value is a quoted string, and IG does not
+escape commas or quotes inside them (confirmed 2026-10-20, store 02 item 2020023):
+    {"ORIG-2020023","Comstock, MI","DESC-01-2020023","Bright citrus and pine,"}
+So it is split with the same rule as text fields: a quote only closes a value
+when it is followed by `,"` (next value) or by `}` and the end of the group.
+Text that itself contains `","` cannot be told apart; keep SKU text simple.
 
 This module has no Azure dependencies so it can be unit tested anywhere.
 """
@@ -130,6 +133,49 @@ def _next_field_starts_ok(line: str, pos: int, next_kind: str | None) -> bool:
     return ch == "" or ch == "," or ch in "-$0123456789."
 
 
+def _split_quoted_group(line: str, i: int, label: str) -> tuple[list[str], int]:
+    """Split a {"a","b",...} group starting at line[i] == '{'.
+
+    Returns (values without their quotes, index of the closing '}').
+    A quote closes a value only when followed by ',"' or by '}' that ends the
+    group (then a comma or end of line), so commas and stray quotes inside the
+    text are kept. An unquoted value is read up to the next ',' or '}'.
+    """
+    n = len(line)
+    j = i + 1
+    values: list[str] = []
+    if line[j:j + 1] == "}":
+        return values, j
+    while True:
+        if j >= n:
+            raise LineError(f"{label}: no closing '}}'")
+        if line[j] == '"':
+            k = j + 1
+            while True:
+                q = line.find('"', k)
+                if q < 0:
+                    raise LineError(f"{label}: no closing quote")
+                after = line[q + 1:q + 3]
+                if after == ',"':
+                    values.append(line[j + 1:q])
+                    j = q + 2
+                    break
+                if after[:1] == "}" and line[q + 2:q + 3] in (",", ""):
+                    values.append(line[j + 1:q])
+                    return values, q + 1
+                k = q + 1  # a quote inside the text; keep going
+        else:
+            comma, close = line.find(",", j), line.find("}", j)
+            if close < 0:
+                raise LineError(f"{label}: no closing '}}'")
+            if 0 <= comma < close:
+                values.append(line[j:comma])
+                j = comma + 1
+            else:
+                values.append(line[j:close])
+                return values, close
+
+
 def split_line(line: str) -> list:
     """Split one MI_Exp line into FIELD_COUNT raw values (str or list[str])."""
     out: list = []
@@ -157,6 +203,11 @@ def split_line(line: str) -> list:
         elif kind == "b":
             if line[i:i + 1] != "{":
                 raise LineError(f"field {k + 1} ({name}): expected '{{'")
+            if name == "skuCodes":
+                values, close = _split_quoted_group(line, i, f"field {k + 1} ({name})")
+                out.append(values)
+                i = close + 2
+                continue
             close = line.find("}", i)
             if close < 0:
                 raise LineError(f"field {k + 1} ({name}): no closing '}}'")
