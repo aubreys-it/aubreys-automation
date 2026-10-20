@@ -48,6 +48,7 @@ header('Content-Type: text/html; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: strict-origin-when-cross-origin');
 // Browsers may cache the HTML briefly; the JSON behind it changes at most daily.
-header('Cache-Control: public, max-age=300');
+header('Cache-Control: private, max-age=300');      // browsers may cache briefly; shared caches may not
+header('Cloudflare-CDN-Cache-Control: no-store');   // tells Cloudflare specifically not to keep menu pages
 
 require __DIR__ . "/templates/$VIEW.php";
